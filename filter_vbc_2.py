@@ -1,0 +1,168 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import argparse
+from sklearn.mixture import GaussianMixture
+#from scipy.stats import norm
+#from scipy.optimize import minimize_scalar
+from scipy.signal import find_peaks, argrelextrema
+from sklearn.neighbors import KernelDensity
+
+def find_gmm_threshold(data):
+    """Finds a threshold using Gaussian Mixture Model (GMM)."""
+    if len(data) < 2:
+        return None
+
+    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
+
+    gmm = GaussianMixture(n_components=2, random_state=42)
+    gmm.fit(data_array)
+
+    mean1, mean2 = gmm.means_.flatten()
+    var1, var2 = gmm.covariances_.flatten()
+    weight1, weight2 = gmm.weights_.flatten()
+
+    if mean1 > mean2:
+        mean1, mean2 = mean2, mean1
+        var1, var2 = var2, var1
+        weight1, weight2 = weight2, weight1
+
+    a = 1 / (2 * var1) - 1 / (2 * var2)
+    b = mean2 / var2 - mean1 / var1
+    c = mean1**2 / (2 * var1) - mean2**2 / (2 * var2) + np.log(var2 / var1)
+    intersection = (-b + np.sqrt(b**2 - 4*a*c)) / (2*a)
+
+    return 10**intersection
+    
+    # Alternative solution: Minimum point detection method
+    #def gaussian_mixture(x):
+    #    return -1 * (weight1 * norm.pdf(x, mean1, np.sqrt(var1)) +
+    #                 weight2 * norm.pdf(x, mean2, np.sqrt(var2)))
+    #                 
+    #result = minimize_scalar(gaussian_mixture, bracket=(mean1, mean2))
+    #threshold = result.x
+    #
+    #return 10**threshold
+    
+def find_kde_mimima_threshold(data):
+    """Finds threshold using KDE minima detection."""
+    if len(data) < 2:
+        return None
+    
+    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
+    
+    # Adaptive bandwidth selection
+    bandwidth = 0.5 * data_array.std()  # Silverman's rule of thumb factor
+    if bandwidth == 0 or np.isnan(bandwidth):
+        return None
+    
+    # Perform KDE analysis
+    kde = KernelDensity(bandwidth=bandwidth)
+    kde.fit(data_array)
+    x = np.linspace(data_array.min(), data_array.max(), 1000).reshape(-1, 1)
+    log_dens = kde.score_samples(x)
+    
+    # find locations of minima
+    minima = argrelextrema(log_dens, np.less)[0]
+    if len(minima) == 0:
+        return None
+    
+    # Find first major minimum (ignore small fluctuations)
+    main_minima = minima[log_dens[minima] < np.percentile(log_dens, 25)]
+    if len(main_minima) == 0:
+        return 10**x[minima[0]][0]  # Fallback to first minimum
+    
+    return 10**x[main_minima[0]][0]
+    
+def main(input_file, output_prefix):
+    df = pd.read_csv(input_file, sep='\t', low_memory=False)
+    output_file = f"{output_prefix}.tsv"
+    
+    if os.path.exists(output_file):
+        print(f"File {output_file} already exists...")
+        return False
+    
+    # Calculate barcode counts and total reads per clone
+    clone_barcode_counts = df.groupby('cloneId')['tagValueUMIBC'].nunique()
+    clone_total_reads = df.groupby('cloneId')['readCount'].sum().reset_index()
+    clone_total_reads['barcode_count'] = clone_total_reads['cloneId'].map(clone_barcode_counts)
+
+    # Filter for clones with barcode_count <= 2 for KDE analysis
+    filtered_data = clone_total_reads[clone_total_reads['barcode_count'] <= 2]
+
+    # Perform KDE analysis and find thresholds for barcode_count 1 and 2
+    thresholds = {}
+    for barcode_count in range(1, 3):  # Iterate over barcode counts 1 and 2
+        subset = filtered_data[filtered_data['barcode_count'] == barcode_count]['readCount']
+        if not subset.empty:
+            thresholds[barcode_count] = find_kde_mimima_threshold(subset)
+
+    # Plot histograms and KDEs for clones with barcode_count <= 2
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))  # One row, two columns
+
+    for i, barcode_count in enumerate(range(1, 3)):  # Iterate over barcode counts 1 and 2
+        subset = filtered_data[filtered_data['barcode_count'] == barcode_count]
+
+        if not subset.empty:
+            ax = axes[i]
+            sns.histplot(subset['readCount'], bins=30, kde=True, ax=ax, log_scale=True)
+
+            threshold = thresholds.get(barcode_count)
+            if threshold:
+                ax.axvline(threshold, color='red', linestyle='dashed', linewidth=2)
+                ax.text(threshold, ax.get_ylim()[1] * 0.8, f'Threshold: {int(threshold)}',
+                        color='red', ha='right', fontsize=10, weight='bold')
+
+            ax.set_title(f'Clones in {barcode_count} Barcodes')
+            ax.set_xlabel('Total Reads (log scale)')
+            ax.set_ylabel('Frequency')
+
+    plt.tight_layout()
+    plt.savefig(f"{output_prefix}.histograms.pdf")
+    plt.close()
+
+    # Apply thresholds to clones with barcode_count <= 2
+    filtered_data = filtered_data.copy()
+    filtered_data.loc[:, 'keep'] = filtered_data.apply(
+        lambda row: row['readCount'] >= thresholds.get(row['barcode_count'], np.inf),
+        axis=1
+    )
+
+    # Combine filtered clones (<=2 barcodes) and all other clones (>2 barcodes)
+    clones_to_keep = pd.concat([
+        filtered_data[filtered_data['keep']]['cloneId'],  # Clones passing the thresholds for <=2 barcodes
+        clone_total_reads[clone_total_reads['barcode_count'] > 2]['cloneId']  # All clones with >2 barcodes
+    ])
+
+    final_data = df[df['cloneId'].isin(clones_to_keep)].copy()
+
+    # Group final data by cloneId and calculate summary statistics
+    grouped_final_data = final_data.groupby('cloneId').first().reset_index()
+    grouped_final_data['readCount'] = final_data.groupby('cloneId')['readCount'].sum().values
+    grouped_final_data['barcode_count'] = grouped_final_data['cloneId'].map(clone_barcode_counts)
+    grouped_final_data = grouped_final_data.drop(columns=['tagValueUMIBC'], errors='ignore')
+
+    # Save the final filtered data to a file
+    grouped_final_data.sort_values("readCount", ascending=False).to_csv(output_file, sep='\t', index=False)
+    print(f"Filtered data saved to {output_file}")
+
+    # Print summary statistics
+    original_rows = df.shape[0]
+    filtered_rows = grouped_final_data.shape[0]
+    original_rows_readSum = int(df['readCount'].sum())
+    filtered_rows_readSum = int(grouped_final_data['readCount'].sum())
+    print(f"Original number of rows: {original_rows:,}")
+    print(f"Original number of reads: {original_rows_readSum:,}")
+    print(f"Final number of rows after mutated sequence filtering: {filtered_rows:,}")
+    print(f"Final number of reads after mutated sequence filtering: {filtered_rows_readSum:,}")
+    print(f"Reads removed: {original_rows_readSum - filtered_rows_readSum:,} "
+          f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Filter clones based on Gaussian Mixture Model thresholding.")
+    parser.add_argument("input_file", type=str, help="Path to input TSV file.")
+    parser.add_argument("output_prefix", type=str, help="Prefix for output files.")
+    args = parser.parse_args()
+    main(args.input_file, args.output_prefix)
