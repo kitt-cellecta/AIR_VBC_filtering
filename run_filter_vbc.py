@@ -34,7 +34,7 @@ def main():
     parser.add_argument('percentage_threshold', help='Threshold value for filtering barcode hopping')
     args = parser.parse_args()
 	
-	run_filter_dir = os.path.dirname(os.path.abspath(__file__))
+    run_filter_dir = os.path.dirname(os.path.abspath(__file__))
 	
     if not os.path.isdir(args.dir):
         sys.exit(f"Error: Directory '{args.dir}' does not exist")
