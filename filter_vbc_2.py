@@ -75,6 +75,53 @@ def find_kde_mimima_threshold(data):
         return 10**x[minima[0]][0]  # Fallback to first minimum
     
     return 10**x[main_minima[0]][0]
+
+def find_kde_mimima_threshold_2(data):
+    """Finds threshold using KDE minima detection between two highest maxima."""
+    if len(data) < 2:
+        return None
+    
+    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
+    
+    # Adaptive bandwidth selection
+    bandwidth = 0.5 * data_array.std()
+    if bandwidth == 0 or np.isnan(bandwidth):
+        return None
+    
+    # Perform KDE analysis
+    kde = KernelDensity(bandwidth=bandwidth)
+    kde.fit(data_array)
+    x = np.linspace(data_array.min(), data_array.max(), 1000).reshape(-1, 1)
+    log_dens = kde.score_samples(x)
+    
+    # Find local minima and maxima
+    minima = argrelextrema(log_dens, np.less)[0]
+    maxima = argrelextrema(log_dens, np.greater)[0]
+    
+    # Check if we have at least two maxima
+    if len(maxima) >= 2:
+        # Get two highest maxima (by log density)
+        sorted_maxima = maxima[np.argsort(-log_dens[maxima])]
+        top_two_max = sorted_maxima[:2]
+        left_max, right_max = sorted(top_two_max)
+        
+        # Find minima between these two maxima
+        between_minima = minima[(minima > left_max) & (minima < right_max)]
+        if between_minima.size > 0:
+            # Select the most prominent minimum (lowest log density)
+            selected_min = between_minima[np.argmin(log_dens[between_minima])]
+            return 10**x[selected_min][0]
+    
+    # Fallback to original detection method if no suitable minima found
+    if len(minima) == 0:
+        return None
+    
+    # Original logic: filter minima below 25th percentile
+    main_minima = minima[log_dens[minima] < np.percentile(log_dens, 25)]
+    if len(main_minima) == 0:
+        return 10**x[minima[0]][0]  # Fallback to first minimum
+    
+    return 10**x[main_minima[0]][0]
     
 def main(input_file, output_prefix):
     
@@ -100,7 +147,7 @@ def main(input_file, output_prefix):
     for barcode_count in range(1, 3):  # Iterate over barcode counts 1 and 2
         subset = filtered_data[filtered_data['barcode_count'] == barcode_count]['readCount']
         if not subset.empty:
-            thresholds[barcode_count] = find_kde_mimima_threshold(subset)
+            thresholds[barcode_count] = find_kde_mimima_threshold_2(subset)
 
     # Plot histograms and KDEs for clones with barcode_count <= 2
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))  # One row, two columns
