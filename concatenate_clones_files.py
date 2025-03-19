@@ -3,6 +3,8 @@ import glob
 import pandas as pd
 import sys
 
+print("Running concatenation...")
+
 # Get the directory path from command line argument
 if len(sys.argv) < 2:
     print("Please provide the directory path as an argument.")
@@ -88,3 +90,5 @@ def process_and_save(dataframes, output_file):
 # Process and save ALL chains data
 all_output = os.path.join(directory, f'{sample}.clones_ALL.tsv')
 process_and_save(all_dataframes, all_output)
+
+print()

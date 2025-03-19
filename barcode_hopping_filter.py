@@ -4,6 +4,9 @@ import argparse
 import os
 
 def filter_clones(input_file, percentage_threshold):
+    
+    print("Running barcode hopping filtering...")    
+    
     # Read TSV file
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
     
@@ -38,6 +41,7 @@ def filter_clones(input_file, percentage_threshold):
     print(f"Final number of reads after mutated sequence filtering: {filtered_rows_readSum:,}")
     print(f"Reads removed: {original_rows_readSum - filtered_rows_readSum:,} "
           f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
+    print()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Filter clone data by read count thresholds')

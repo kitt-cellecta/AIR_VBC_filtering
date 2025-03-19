@@ -77,6 +77,9 @@ def find_kde_mimima_threshold(data):
     return 10**x[main_minima[0]][0]
     
 def main(input_file, output_prefix):
+    
+    print("Running VBC filtering...")
+    
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
     output_file = f"{output_prefix}.tsv"
     
@@ -159,6 +162,7 @@ def main(input_file, output_prefix):
     print(f"Final number of reads after mutated sequence filtering: {filtered_rows_readSum:,}")
     print(f"Reads removed: {original_rows_readSum - filtered_rows_readSum:,} "
           f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
+    print()
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Filter clones based on Gaussian Mixture Model thresholding.")
