@@ -37,8 +37,8 @@ def filter_clones(input_file, percentage_threshold):
     filtered_rows_readSum = int(filtered_df['readCount'].sum())
     print(f"Original number of rows: {original_rows:,}")
     print(f"Original number of reads: {original_rows_readSum:,}")
-    print(f"Final number of rows after mutated sequence filtering: {filtered_rows:,}")
-    print(f"Final number of reads after mutated sequence filtering: {filtered_rows_readSum:,}")
+    print(f"Final number of rows after barcode hopping filtering: {filtered_rows:,}")
+    print(f"Final number of reads after barcode hopping filtering: {filtered_rows_readSum:,}")
     print(f"Reads removed: {original_rows_readSum - filtered_rows_readSum:,} "
           f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
     print()

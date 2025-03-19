@@ -88,7 +88,7 @@ def main(input_file, output_prefix):
         return False
     
     # Calculate barcode counts and total reads per clone
-    clone_barcode_counts = df.groupby('cloneId')['tagValueUMIBC'].nunique()
+    clone_barcode_counts = df.groupby('cloneId')['tagValueMIBC'].nunique()
     clone_total_reads = df.groupby('cloneId')['readCount'].sum().reset_index()
     clone_total_reads['barcode_count'] = clone_total_reads['cloneId'].map(clone_barcode_counts)
 
@@ -145,7 +145,7 @@ def main(input_file, output_prefix):
     grouped_final_data = final_data.groupby('cloneId').first().reset_index()
     grouped_final_data['readCount'] = final_data.groupby('cloneId')['readCount'].sum().values
     grouped_final_data['barcode_count'] = grouped_final_data['cloneId'].map(clone_barcode_counts)
-    grouped_final_data = grouped_final_data.drop(columns=['tagValueUMIBC'], errors='ignore')
+    grouped_final_data = grouped_final_data.drop(columns=['tagValueMIBC'], errors='ignore')
 
     # Save the final filtered data to a file
     grouped_final_data.sort_values("readCount", ascending=False).to_csv(output_file, sep='\t', index=False)
