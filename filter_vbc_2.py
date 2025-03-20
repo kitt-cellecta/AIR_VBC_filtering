@@ -116,7 +116,7 @@ def find_kde_mimima_threshold_2(data):
     if len(minima) == 0:
         return None
     
-    # Original logic: filter minima below 25th percentile
+    # Filter minima below 25th percentile
     main_minima = minima[log_dens[minima] < np.percentile(log_dens, 25)]
     if len(main_minima) == 0:
         return 10**x[minima[0]][0]  # Fallback to first minimum

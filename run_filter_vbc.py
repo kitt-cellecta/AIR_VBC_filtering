@@ -40,7 +40,10 @@ def main():
         sys.exit(f"Error: Directory '{args.dir}' does not exist")
 
     try:
-        report_file_name = f"{args.dir}VBC_Hopping_Filtering.report.txt"
+        report_file_name = f"{args.dir}{args.sample}.vbcFiltering.report.txt"
+        if os.path.exists(report_file_name):
+            print(f"Clones have already been filtered for {args.sample}. See '{report_file_name}'...")
+            sys.exit(0)
         
         with open(report_file_name, 'w') as report_file:
             
