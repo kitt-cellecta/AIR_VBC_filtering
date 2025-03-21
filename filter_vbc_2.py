@@ -200,7 +200,7 @@ def main(input_file, output_prefix):
 
     # Print summary statistics
     original_rows = df.shape[0]
-    filtered_rows = grouped_final_data.shape[0]
+    filtered_rows = int(grouped_final_data['barcode_count'].sum())
     original_rows_readSum = int(df['readCount'].sum())
     filtered_rows_readSum = int(grouped_final_data['readCount'].sum())
     print(f"Original number of rows: {original_rows:,}")

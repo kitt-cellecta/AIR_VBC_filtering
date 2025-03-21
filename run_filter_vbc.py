@@ -79,12 +79,12 @@ def main():
             )
             
             if not os.path.exists(output_vbc_filtered):
-                sys.exit(f"Error: Stage 2 failed to create {output_vbc_filtered}")
+                sys.exit(f"Error: Failed to create split filtered clonotypes to different chains...")
 
-            # Split filtered clones
-            py4_split = os.path.join(run_filter_dir, "split_filtered_clones.py")
+            # Find passing clonotypes and split clonotypes based on chain
+            py4_split = os.path.join(run_filter_dir, "filter_passing_clonotypes.py")
             run_subprocess(
-                ["python3", py4_split, output_vbc_filtered],
+                ["python3", py4_split, args.dir],
                 report_file
             )
 
