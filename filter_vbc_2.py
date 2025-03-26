@@ -99,6 +99,12 @@ def find_kde_mimima_threshold_2(data):
     maxima = argrelextrema(log_dens, np.greater)[0]
     
     # Check if we have at least two maxima
+    if len(maxima) == 0:
+        return 0
+    
+    if len(maxima) == 1:
+        return 0
+    
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
         sorted_maxima = maxima[np.argsort(-log_dens[maxima])]
@@ -111,17 +117,6 @@ def find_kde_mimima_threshold_2(data):
             # Select the most prominent minimum (lowest log density)
             selected_min = between_minima[np.argmin(log_dens[between_minima])]
             return 10**x[selected_min][0]
-    
-    # Fallback to original detection method if no suitable minima found
-    if len(minima) == 0:
-        return None
-    
-    # Filter minima below 25th percentile
-    main_minima = minima[log_dens[minima] < np.percentile(log_dens, 25)]
-    if len(main_minima) == 0:
-        return 10**x[minima[0]][0]  # Fallback to first minimum
-    
-    return 10**x[main_minima[0]][0]
     
 def main(input_file, output_prefix):
     
