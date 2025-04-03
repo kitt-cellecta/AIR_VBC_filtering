@@ -103,7 +103,7 @@ def find_kde_mimima_threshold_2(data):
         return 0
     
     if len(maxima) == 1:
-        return 0
+        return 2
     
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
