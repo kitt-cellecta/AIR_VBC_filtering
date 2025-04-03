@@ -34,6 +34,9 @@ def main():
     parser.add_argument('percentage_threshold', help='Threshold value for filtering barcode hopping')
     args = parser.parse_args()
 	
+    if not args.dir.endswith(os.path.sep):
+        args.dir += os.path.sep
+	
     run_filter_dir = os.path.dirname(os.path.abspath(__file__))
 	
     if not os.path.isdir(args.dir):
