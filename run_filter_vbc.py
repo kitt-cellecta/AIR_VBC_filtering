@@ -82,7 +82,7 @@ def main():
                 sys.exit(f"Error: Failed to create split filtered clonotypes to different chains...")
 
             # Find passing clonotypes and split clonotypes based on chain
-            py4_split = os.path.join(run_filter_dir, "filter_passing_clonotypes.py")
+            py4_split = os.path.join(run_filter_dir, "filter_passing_clonotypes_2.py")
             run_subprocess(
                 ["python3", py4_split, args.dir],
                 report_file
