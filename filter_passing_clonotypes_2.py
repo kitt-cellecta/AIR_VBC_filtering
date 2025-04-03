@@ -60,10 +60,10 @@ def filter_passing_clonotypes(directory):
     sample_name = file1.split(".clones_")[0]
 
     file2_path = os.path.join(directory, file2)
-    df_file2 = pd.read_csv(file2_path, sep="\t")
+    df_file2 = pd.read_csv(file2_path, sep="\t", low_memory=False)
 
     file1_path = os.path.join(directory, file1)
-    df_file1 = pd.read_csv(file1_path, sep="\t")
+    df_file1 = pd.read_csv(file1_path, sep="\t", low_memory=False)
 
     # Filter rows in barcode hopping filtered file where targetSequences match those in VBC filtered file
     unique_target_sequences = set(df_file2["targetSequences"].dropna())
