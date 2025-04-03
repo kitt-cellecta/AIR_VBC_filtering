@@ -32,7 +32,6 @@ def simplify_clonotypes_table(df_filtered):
         ['tagValueMIBC', 'readCount', 'readFraction']
     )
     df_other = df_filtered.loc[idx, other_columns].reset_index(drop=True)
-    df_other.to_csv("~/Desktop/tests/test.tsv", sep="\t", index=True)
 	
     # Merge pivot table with metadata
     df_final = df_pivot.reset_index().merge(
