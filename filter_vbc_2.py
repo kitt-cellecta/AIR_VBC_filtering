@@ -76,7 +76,7 @@ def find_kde_mimima_threshold(data):
     
     return 10**x[main_minima[0]][0]
 
-def find_kde_mimima_threshold_2(data):
+def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
     """Finds threshold using KDE minima detection between two highest maxima."""
     if len(data) < 2:
         return None
@@ -103,13 +103,22 @@ def find_kde_mimima_threshold_2(data):
         return 0
     
     if len(maxima) == 1:
+        # Save maxima locations to a file
+        with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
+            f.write(f"{barcode_count}\t{10**x[left_max][0]}\t{10**x[right_max][0]}\n")
+		
+		# Return fixed value as the cutoff if there's only one peak
         return 2
-    
+            
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
         sorted_maxima = maxima[np.argsort(-log_dens[maxima])]
         top_two_max = sorted_maxima[:2]
         left_max, right_max = sorted(top_two_max)
+        
+        # Save maxima locations to a file
+        with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
+            f.write(f"{barcode_count}\t{10**x[left_max][0]}\t{10**x[right_max][0]}\n")
         
         # Find minima between these two maxima
         between_minima = minima[(minima > left_max) & (minima < right_max)]
@@ -134,21 +143,19 @@ def main(input_file, output_prefix):
     clone_total_reads = df.groupby('cloneId')['readCount'].sum().reset_index()
     clone_total_reads['barcode_count'] = clone_total_reads['cloneId'].map(clone_barcode_counts)
 
-    # Filter for clones with barcode_count <= 2 for KDE analysis
-    filtered_data = clone_total_reads[clone_total_reads['barcode_count'] <= 2]
-
-    # Perform KDE analysis and find thresholds for barcode_count 1 and 2
+    # Perform KDE analysis
     thresholds = {}
-    for barcode_count in range(1, 3):  # Iterate over barcode counts 1 and 2
-        subset = filtered_data[filtered_data['barcode_count'] == barcode_count]['readCount']
+    for barcode_count in range(1, 9):
+        subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
         if not subset.empty:
-            thresholds[barcode_count] = find_kde_mimima_threshold_2(subset)
+            thresholds[barcode_count] = find_kde_mimima_threshold_2(subset, barcode_count, output_prefix)
 
-    # Plot histograms and KDEs for clones with barcode_count <= 2
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))  # One row, two columns
+    # Plot histograms and KDEs for clones
+    fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
+    axes = axes.flatten()
 
-    for i, barcode_count in enumerate(range(1, 3)):  # Iterate over barcode counts 1 and 2
-        subset = filtered_data[filtered_data['barcode_count'] == barcode_count]
+    for i, barcode_count in enumerate(range(1, 9)):
+        subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]
 
         if not subset.empty:
             ax = axes[i]
@@ -168,19 +175,13 @@ def main(input_file, output_prefix):
     plt.savefig(f"{output_prefix}.histograms.pdf")
     plt.close()
 
-    # Apply thresholds to clones with barcode_count <= 2
-    filtered_data = filtered_data.copy()
-    filtered_data.loc[:, 'keep'] = filtered_data.apply(
+    # Apply thresholds to clones
+    clone_total_reads = clone_total_reads.copy()
+    clone_total_reads.loc[:, 'keep'] = clone_total_reads.apply(
         lambda row: row['readCount'] >= thresholds.get(row['barcode_count'], np.inf),
         axis=1
     )
-
-    # Combine filtered clones (<=2 barcodes) and all other clones (>2 barcodes)
-    clones_to_keep = pd.concat([
-        filtered_data[filtered_data['keep']]['cloneId'],  # Clones passing the thresholds for <=2 barcodes
-        clone_total_reads[clone_total_reads['barcode_count'] > 2]['cloneId']  # All clones with >2 barcodes
-    ])
-
+    clones_to_keep = clone_total_reads[clone_total_reads['keep']]['cloneId']
     final_data = df[df['cloneId'].isin(clones_to_keep)].copy()
 
     # Group final data by cloneId and calculate summary statistics
