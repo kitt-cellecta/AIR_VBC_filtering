@@ -92,9 +92,9 @@ def main():
             )
 
             print("Barcode hopping and mutated sequence filtering completed...")
-            #os.remove(output_all)
-            #os.remove(output_bcHop_filtered)
-            #os.remove(output_vbc_filtered)
+            os.remove(output_all)
+            os.remove(output_bcHop_filtered)
+            os.remove(output_vbc_filtered)
 		
     except subprocess.CalledProcessError as e:
         sys.exit(f"Pipeline failed at {e.cmd[1]} with error {e.returncode}")

@@ -46,6 +46,8 @@ def quantify_templates(directory, sample):
                 output_path = os.path.join(directory, output_file)
                 df.to_csv(output_path, sep='\t', index=False)
                 processed_files.append(output_file)
+                if os.path.exists(output_path):
+                    os.remove(input_path)
                 
             else:
                 print(f"'readCount' column missing in {input_file}")
@@ -54,12 +56,16 @@ def quantify_templates(directory, sample):
             print(f"Error processing {chain}: {str(e)}")
             
     # Create report file
+    round_normFactor = round(normFactor, 2)
     with open(report_path, 'w') as report:
         report.write("Template Estimation Analysis Completed\n")
-        report.write(f"Norm Factor: {normFactor}\n")
+        report.write(f"Norm Factor: {round_normFactor}\n")
         report.write("Processed Files:\n")
         for file in processed_files:
             report.write(f"- {file}\n")
+    
+    if os.path.exists(report_path):
+        os.remove(maxima_path) 
     
     print(f"Template estimation analysis completed for {sample}\n")
 
