@@ -1,2 +1,4 @@
-*.DS_Store
-.Icon?
+.DS_Store
+Icon?
+desktop.ini
+*-report-*.html
