@@ -18,7 +18,7 @@ def quantify_templates(directory, sample):
     
     try:
         maxima_df = pd.read_csv(maxima_path, sep='\t', header=None)
-        normFactor = float(maxima_df.iloc[0, 2])
+        normFactor = float(maxima_df.iloc[0, 3])
     except Exception as e:
         print(f"Error reading maxima file: {str(e)}")
         return
