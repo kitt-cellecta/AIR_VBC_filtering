@@ -100,32 +100,27 @@ def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
     
     # Check if we have at least two maxima
     if len(maxima) == 0:
-        return 0
+        return (2, 0, 0)
     
     if len(maxima) == 1:
-        # Save maxima locations to a file
-        with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
-            f.write(f"{barcode_count}\t{10**x[left_max][0]}\t{10**x[right_max][0]}\n")
+        left_max_constant = 0 # setting the first peak as non-existent at 0
+        right_max = maxima[0]
 		
 		# Return fixed value as the cutoff if there's only one peak
-        return 2
+        return (2, left_max_constant, 10**x[right_max][0])
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
         sorted_maxima = maxima[np.argsort(-log_dens[maxima])]
         top_two_max = sorted_maxima[:2]
         left_max, right_max = sorted(top_two_max)
-        
-        # Save maxima locations to a file
-        with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
-            f.write(f"{barcode_count}\t{10**x[left_max][0]}\t{10**x[right_max][0]}\n")
-        
+                
         # Find minima between these two maxima
         between_minima = minima[(minima > left_max) & (minima < right_max)]
         if between_minima.size > 0:
             # Select the most prominent minimum (lowest log density)
             selected_min = between_minima[np.argmin(log_dens[between_minima])]
-            return 10**x[selected_min][0]
+            return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
     
 def main(input_file, output_prefix):
     
@@ -145,11 +140,33 @@ def main(input_file, output_prefix):
 
     # Perform KDE analysis
     thresholds = {}
+    left_maxes = {}
+    right_maxes = {}
     for barcode_count in range(1, 9):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
         if not subset.empty:
-            thresholds[barcode_count] = find_kde_mimima_threshold_2(subset, barcode_count, output_prefix)
-
+            thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold_2(subset, barcode_count, output_prefix)
+    
+    # Check results of KDE analysis across 8 barcodes before writing to file and performing filtering
+    # in certain cases, the VBC = 4 or higher have no first peak but there might be a small peak after the second peak 
+    # for a couple of clonotypes. we know that the increase of values from VBC = 1, 2, etc is a slight doubling, so
+    # we're using this information to check if the value of the filter went haywire. the cutoff that we're using is 10x
+    # increase.
+    
+    sorted_keys = sorted(thresholds.keys())
+    for i in range(1, len(sorted_keys)):
+        current_key = sorted_keys[i]
+        previous_key = sorted_keys[i - 1]
+        if thresholds[current_key] > 10 * thresholds[previous_key]:
+            right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
+            left_maxes[current_key] = 0							# the first peak is set at 0
+            thresholds[current_key] = 2							# default cutoff value = 2
+            
+	# Save maxima and threshold locations to a file
+    with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
+        for barcode_count in range(1, 9):
+            f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
+    
     # Plot histograms and KDEs for clones
     fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
     axes = axes.flatten()
