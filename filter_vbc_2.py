@@ -103,9 +103,12 @@ def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
         return 0
     
     if len(maxima) == 1:
+        left_max_constant = 0 # setting the first peak as non-existent at 0
+        right_max = maxima
+        
         # Save maxima locations to a file
         with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
-            f.write(f"{barcode_count}\t{10**x[left_max][0]}\t{10**x[right_max][0]}\n")
+            f.write(f"{barcode_count}\t{left_max_constant}\t{10**x[right_max][0]}\n")
 		
 		# Return fixed value as the cutoff if there's only one peak
         return 2
