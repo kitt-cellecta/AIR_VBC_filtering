@@ -96,10 +96,27 @@ def main(input_file, output_prefix):
     # increase.
     
     sorted_keys = sorted(thresholds.keys())
+    
     for i in range(1, len(sorted_keys)):
+
         current_key = sorted_keys[i]
         previous_key = sorted_keys[i - 1]
-        if thresholds[current_key] > 10 * thresholds[previous_key]:
+
+        # check if previous threshold is 10x less than the current threshold (previousThreshold10x)
+        previousThreshold10x = thresholds[current_key] > 10 * thresholds[previous_key]    
+
+        # check if next threshold is 10x more than the current threshold (nextThreshold10x)   
+        if current_key < len(sorted_keys):
+            next_key = sorted_keys[i + 1]
+            nextThreshold10x = thresholds[next_key] > 10 * thresholds[current_key]
+        else:
+            nextThreshold10x = False
+        
+        # check if the previous threshold is just a default threshold setting (previousThresholdDefault)
+        previousThresholdDefault = thresholds[previous_key] == 2
+
+        # modify thresholds file if previousThreshold10x, nextThreshold10x and previousThresholdDefault are all True
+        if previousThreshold10x and nextThreshold10x and previousThresholdDefault: 
             right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
             left_maxes[current_key] = 0							# the first peak is set at 0
             thresholds[current_key] = 2							# default cutoff value = 2
