@@ -82,7 +82,7 @@ def filter_passing_clonotypes(directory):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python3 filter_passing_clonotype_vbcs.py $DIRECTORY")
+        print("Usage: python3 filter_passing_clonotype_2.py $DIRECTORY")
         sys.exit(1)
 
     input_directory = sys.argv[1]

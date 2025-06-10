@@ -9,6 +9,7 @@ from sklearn.mixture import GaussianMixture
 #from scipy.optimize import minimize_scalar
 from scipy.signal import find_peaks, argrelextrema
 from sklearn.neighbors import KernelDensity
+from scipy.stats import iqr
 
 def find_gmm_threshold(data):
     """Finds a threshold using Gaussian Mixture Model (GMM)."""
@@ -84,7 +85,10 @@ def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
     
     # Adaptive bandwidth selection
-    bandwidth = 0.5 * data_array.std()
+    #bandwidth = 0.5 * data_array.std()
+    n = len(data_array)
+    sigma = np.std(data_array, ddof=1)
+    bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
         return None
     
@@ -157,10 +161,10 @@ def main(input_file, output_prefix):
     for i in range(1, len(sorted_keys)):
         current_key = sorted_keys[i]
         previous_key = sorted_keys[i - 1]
-        if thresholds[current_key] > 10 * thresholds[previous_key]:
-            right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
-            left_maxes[current_key] = 0							# the first peak is set at 0
-            thresholds[current_key] = 2							# default cutoff value = 2
+        #if thresholds[current_key] > 10 * thresholds[previous_key]:
+        #    right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
+        #    left_maxes[current_key] = 0							# the first peak is set at 0
+        #    thresholds[current_key] = 2							# default cutoff value = 2
             
 	# Save maxima and threshold locations to a file
     with open(f"{output_prefix}.kde.maximas.txt", "a") as f:
