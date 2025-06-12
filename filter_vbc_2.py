@@ -9,72 +9,7 @@ from sklearn.mixture import GaussianMixture
 #from scipy.optimize import minimize_scalar
 from scipy.signal import find_peaks, argrelextrema
 from sklearn.neighbors import KernelDensity
-
-def find_gmm_threshold(data):
-    """Finds a threshold using Gaussian Mixture Model (GMM)."""
-    if len(data) < 2:
-        return None
-
-    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
-
-    gmm = GaussianMixture(n_components=2, random_state=42)
-    gmm.fit(data_array)
-
-    mean1, mean2 = gmm.means_.flatten()
-    var1, var2 = gmm.covariances_.flatten()
-    weight1, weight2 = gmm.weights_.flatten()
-
-    if mean1 > mean2:
-        mean1, mean2 = mean2, mean1
-        var1, var2 = var2, var1
-        weight1, weight2 = weight2, weight1
-
-    a = 1 / (2 * var1) - 1 / (2 * var2)
-    b = mean2 / var2 - mean1 / var1
-    c = mean1**2 / (2 * var1) - mean2**2 / (2 * var2) + np.log(var2 / var1)
-    intersection = (-b + np.sqrt(b**2 - 4*a*c)) / (2*a)
-
-    return 10**intersection
-    
-    # Alternative solution: Minimum point detection method
-    #def gaussian_mixture(x):
-    #    return -1 * (weight1 * norm.pdf(x, mean1, np.sqrt(var1)) +
-    #                 weight2 * norm.pdf(x, mean2, np.sqrt(var2)))
-    #                 
-    #result = minimize_scalar(gaussian_mixture, bracket=(mean1, mean2))
-    #threshold = result.x
-    #
-    #return 10**threshold
-    
-def find_kde_mimima_threshold(data):
-    """Finds threshold using KDE minima detection."""
-    if len(data) < 2:
-        return None
-    
-    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
-    
-    # Adaptive bandwidth selection
-    bandwidth = 0.5 * data_array.std()  # Silverman's rule of thumb factor
-    if bandwidth == 0 or np.isnan(bandwidth):
-        return None
-    
-    # Perform KDE analysis
-    kde = KernelDensity(bandwidth=bandwidth)
-    kde.fit(data_array)
-    x = np.linspace(data_array.min(), data_array.max(), 1000).reshape(-1, 1)
-    log_dens = kde.score_samples(x)
-    
-    # find locations of minima
-    minima = argrelextrema(log_dens, np.less)[0]
-    if len(minima) == 0:
-        return None
-    
-    # Find first major minimum (ignore small fluctuations)
-    main_minima = minima[log_dens[minima] < np.percentile(log_dens, 25)]
-    if len(main_minima) == 0:
-        return 10**x[minima[0]][0]  # Fallback to first minimum
-    
-    return 10**x[main_minima[0]][0]
+from scipy.stats import iqr
 
 def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
     """Finds threshold using KDE minima detection between two highest maxima."""
@@ -84,7 +19,10 @@ def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
     
     # Adaptive bandwidth selection
-    bandwidth = 0.5 * data_array.std()
+    #bandwidth = 0.5 * data_array.std()
+    n = len(data_array)
+    sigma = np.std(data_array, ddof=1)
+    bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
         return None
     
@@ -103,11 +41,15 @@ def find_kde_mimima_threshold_2(data, barcode_count, output_prefix):
         return (2, 0, 0)
     
     if len(maxima) == 1:
-        left_max_constant = 0 # setting the first peak as non-existent at 0
+        left_max = 0 # setting the first peak as non-existent at 0
         right_max = maxima[0]
 		
-		# Return fixed value as the cutoff if there's only one peak
-        return (2, left_max_constant, 10**x[right_max][0])
+        # Find minima between these two maxima
+        between_minima = minima[(minima > left_max) & (minima < right_max)]
+        if between_minima.size > 0:
+            # Select the most prominent minimum (lowest log density)
+            selected_min = between_minima[np.argmin(log_dens[between_minima])]
+            return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
@@ -154,10 +96,27 @@ def main(input_file, output_prefix):
     # increase.
     
     sorted_keys = sorted(thresholds.keys())
+    
     for i in range(1, len(sorted_keys)):
+
         current_key = sorted_keys[i]
         previous_key = sorted_keys[i - 1]
-        if thresholds[current_key] > 10 * thresholds[previous_key]:
+
+        # check if previous threshold is 10x less than the current threshold (previousThreshold10x)
+        previousThreshold10x = thresholds[current_key] > 10 * thresholds[previous_key]    
+
+        # check if next threshold is 10x more than the current threshold (nextThreshold10x)   
+        if current_key < len(sorted_keys):
+            next_key = sorted_keys[i + 1]
+            nextThreshold10x = thresholds[next_key] > 10 * thresholds[current_key]
+        else:
+            nextThreshold10x = False
+        
+        # check if the previous threshold is just a default threshold setting (previousThresholdDefault)
+        previousThresholdDefault = thresholds[previous_key] == 2
+
+        # modify thresholds file if previousThreshold10x, nextThreshold10x and previousThresholdDefault are all True
+        if previousThreshold10x and nextThreshold10x and previousThresholdDefault: 
             right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
             left_maxes[current_key] = 0							# the first peak is set at 0
             thresholds[current_key] = 2							# default cutoff value = 2

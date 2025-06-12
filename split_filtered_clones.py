@@ -27,7 +27,7 @@ def split_tsv_by_chain(input_file):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python script_name.py /path/to/input_file.tsv")
+        print("Usage: python split_filtered_clones.py /path/to/input_file.tsv")
         sys.exit(1)
     
     input_file = sys.argv[1]
