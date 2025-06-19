@@ -23,15 +23,6 @@ from scipy.stats import iqr
 def barcode_hopping_filter(input_file, percentage):
     
     print("Running barcode hopping filtering...")    
-        
-    # Validate Inputs
-    if not os.path.exists(input_file):
-        print(f"Error: Input file not found: {input_file}", file=sys.stderr)
-        sys.exit(1)
-    
-    if percentage <= 0 or percentage >= 100:
-        print("Error: Percentage must be between 0 and 100", file=sys.stderr)
-        sys.exit(1)
     
     # Read TSV file
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
@@ -317,6 +308,7 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered):
 ### main 
 ### inputs:
 ###     input_file = file containing all clonotypes from MiXCR with VBC preset
+###     directory = location of mixcr files (set as "", i.e. blank, if working in Platforma)
 ###     sample_name = sample name
 ### outputs: 
 ###     df_passing_clonotypes = simplified df post-barcode hopping and reads per clonotype filters
@@ -329,7 +321,12 @@ def main(input_file, directory, sample_name):
     Step 3: filter_passing_clonotypes -- generate final table
     """
 	
-    percentage = 5 # default setting
+    # Validate Inputs
+    if not os.path.exists(input_file):
+        print(f"Error: Input file not found: {input_file}", file=sys.stderr)
+        sys.exit(1)
+	
+    percentage = 5 # default setting for barcode hopping filter
     mixcr_clones_file = input_file
 	
     df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage)

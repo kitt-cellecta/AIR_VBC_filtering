@@ -3,17 +3,26 @@ import os
 import math
 import argparse
 
-def quantify_templates(directory, sample):
+######
+### quantify_templates 
+### inputs:
+###     directory = location of mixcr files (set as "", i.e. blank, if working in Platforma)
+###     sample_name =  sample name
+### outputs: 
+###     $SAMPLE_NAME.clones_ALL.quantified.tsv - clonotype table with molecular estimates (all chains in single table)
+######
+
+def quantify_templates(directory, sample_name):
     
     # Check if the analysis has already been completed
-    report_file = f"{sample}.templateEstimation.report.txt"
+    report_file = f"{sample_name}.templateEstimation.report.txt"
     report_path = os.path.join(directory, report_file)
     if os.path.exists(report_path):
-        print(f"Template estimation for {sample} has already completed. Will not run again...")
+        print(f"Template estimation for {sample_name} has already completed. Will not run again...")
         return
     
     # Get normFactor from kde.maximas file
-    maxima_file = f"{sample}.clones_ALL.vbc_filtered.kde.maximas.txt"
+    maxima_file = f"{sample_name}.kde.maximas.txt"
     maxima_path = os.path.join(directory, maxima_file)
     
     try:
@@ -23,37 +32,31 @@ def quantify_templates(directory, sample):
         print(f"Error reading maxima file: {str(e)}")
         return
 
-    # Process each chain type
-    chains = ['IGH', 'IGK', 'IGL', 'TRA', 'TRB', 'TRD', 'TRG']
+    # Normalize read counts to template counts
     
-    processed_files = []
-    for chain in chains:
-        input_file = f"{sample}.clones_{chain}_filtered.tsv"
-        input_path = os.path.join(directory, input_file)
-        
-        if not os.path.exists(input_path):
-            continue
+    input_file = f"{sample_name}.clones_ALL.filtered.tsv"
+    input_path = os.path.join(directory, input_file)
             
-        try:
+    try:
 
-            df = pd.read_csv(input_path, sep='\t')            
-            if 'readCount' in df.columns:
-                df['templateEstimate'] = df['readCount'].apply(
-                    lambda x: math.ceil(x / normFactor)
-                )
+        df = pd.read_csv(input_path, sep='\t')            
+        if 'readCount' in df.columns:
+            df['templateEstimate'] = df['readCount'].apply(
+                lambda x: round(x / normFactor)
+            )
+            df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1 # round up values that were rounded down to 0
                 
-                output_file = f"{sample}.clones_{chain}_quantified.tsv"
-                output_path = os.path.join(directory, output_file)
-                df.to_csv(output_path, sep='\t', index=False)
-                processed_files.append(output_file)
-                if os.path.exists(output_path):
-                    os.remove(input_path)
+            output_file = f"{sample_name}.clones_ALL.quantified.tsv"
+            output_path = os.path.join(directory, output_file)
+            df.to_csv(output_path, sep='\t', index=False)
+            if os.path.exists(output_path):
+                os.remove(input_path)
                 
-            else:
-                print(f"'readCount' column missing in {input_file}")
+        else:
+            print(f"'readCount' column missing in {input_file}")
                 
-        except Exception as e:
-            print(f"Error processing {chain}: {str(e)}")
+    except Exception as e:
+        print(f"Error processing {input_file}: {str(e)}")
             
     # Create report file
     round_normFactor = round(normFactor, 2)
@@ -61,23 +64,22 @@ def quantify_templates(directory, sample):
         report.write("Template Estimation Analysis Completed\n")
         report.write(f"Norm Factor: {round_normFactor}\n")
         report.write("Processed Files:\n")
-        for file in processed_files:
-            report.write(f"- {file}\n")
+        report.write(f"- {output_file}\n")
     
     if os.path.exists(report_path):
         os.remove(maxima_path) 
     
-    print(f"Template estimation analysis completed for {sample}\n")
+    print(f"Template estimation analysis completed for {sample_name}\n")
 
 if __name__ == "__main__":
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Quantify templates based on normFactor")
-    parser.add_argument("directory", help="Directory containing the sample files")
-    parser.add_argument("sample", help="Sample name")
+    parser.add_argument("directory", help="Directory containing the sample_name files")
+    parser.add_argument("sample_name", help="sample_name name")
 
     # Parse arguments
     args = parser.parse_args()
     
     # Run the processing function
-    quantify_templates(args.directory, args.sample)
+    quantify_templates(args.directory, args.sample_name)
 
