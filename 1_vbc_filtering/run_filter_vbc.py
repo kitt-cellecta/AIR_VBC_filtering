@@ -65,7 +65,7 @@ def main():
 		
             # QC Filtering steps with VBC
             output_filtered = os.path.join(directory, f"{sample_name}.clones_ALL.filtered.tsv")
-            py2_filtering = os.path.join(run_filter_dir, "qcfiltering.py")
+            py2_filtering = os.path.join(run_filter_dir, "filter.py")
             run_subprocess(
                 ["python3", py2_filtering, output_all, directory, sample_name],
                 report_file

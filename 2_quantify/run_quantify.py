@@ -37,7 +37,7 @@ def main():
         # run quantification process
         
         quantification_output = os.path.join(directory, f"{sample_name}.clones_ALL.quantified.tsv")
-        py1_quantify = os.path.join(run_filter_dir, "quantify_templates.py")
+        py1_quantify = os.path.join(run_filter_dir, "normalize.py")
         subprocess.run(["python3", py1_quantify, directory, sample_name])
             
         if not os.path.exists(quantification_output):
