@@ -22,15 +22,19 @@ def quantify_templates(directory, sample_name):
         return
     
     # Get normFactor from kde.maximas file
+    
     maxima_file = f"{sample_name}.kde.maximas.txt"
     maxima_path = os.path.join(directory, maxima_file)
-    
-    try:
-        maxima_df = pd.read_csv(maxima_path, sep='\t', header=None)
-        normFactor = float(maxima_df.iloc[0, 3])
-    except Exception as e:
-        print(f"Error reading maxima file: {str(e)}")
-        return
+
+    if os.path.exists(maxima_path):    
+        try:
+            maxima_df = pd.read_csv(maxima_path, sep='\t', header=None)
+            normFactor = float(maxima_df.iloc[0, 3])
+        except Exception as e:
+            print(f"Error reading maxima file: {str(e)}")
+            return
+    else:
+        norm_factor = float('nan')
 
     # Normalize read counts to template counts
     
@@ -41,10 +45,17 @@ def quantify_templates(directory, sample_name):
 
         df = pd.read_csv(input_path, sep='\t')            
         if 'readCount' in df.columns:
-            df['templateEstimate'] = df['readCount'].apply(
-                lambda x: round(x / normFactor)
-            )
-            df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1 # round up values that were rounded down to 0
+            
+            if not math.isnan(norm_factor):
+            
+                df['templateEstimate'] = df['readCount'].apply(
+                    lambda x: round(x / normFactor)
+                )
+                df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1 # round up values that were rounded down to 0
+            
+            else:
+            
+                df['templateEstimate'] = np.nan # if norm factor is NA, set template estimates as NA    
                 
             output_file = f"{sample_name}.clones_ALL.quantified.tsv"
             output_path = os.path.join(directory, output_file)

@@ -12,6 +12,28 @@ from scipy.signal import find_peaks, argrelextrema
 from scipy.stats import iqr
 
 ######
+### qc_mixcr_output -- check quality of MiXCR output
+###	inputs: 
+###    input_file = file containing all clonotypes from MiXCR with VBC preset
+### outputs:
+###    qc_ok = TRUE or FALSE
+######
+
+def qc_mixcr_output(input_file):
+    
+    print("Running clonotype qc...")    
+    
+    # Read TSV file
+    df = pd.read_csv(input_file, sep='\t', low_memory=False)
+    
+    # Check that there are at least N number of clonotypes in df
+    clonotype_count = df.shape[0]
+    if clonotype_count < 1000:
+        return FALSE
+    
+    return TRUE
+
+######
 ### barcode_hopping_filter -- barcode hopping filter; remove VBCs with low reads relative to other VBCs of the same clonotype sequence
 ###	inputs: 
 ###    input_file = file containing all clonotypes from MiXCR with VBC preset
@@ -329,14 +351,27 @@ def main(input_file, directory, sample_name):
     percentage = 5 # default setting for barcode hopping filter
     mixcr_clones_file = input_file
 	
-    df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage)
-    df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name)
-    df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered)
-    
+	# Check Data Quality
+	
+    qcIsGood = qc_mixcr_output(mixcr_clones_file)
     output_filename = f"{sample_name}.clones_ALL.filtered.tsv"
-    output_path = os.path.join(directory, output_filename)
-    df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
-    df_passing_clonotypes.to_csv(output_path, sep="\t", index=False)
+    output_path = os.path.join(directory, output_filename)	
+	
+    if qcIsGood:
+        
+        # Run VBC filtering steps if data quality is good
+        df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage)
+        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name)
+        df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered)
+    
+        df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
+        df_passing_clonotypes.to_csv(output_path, sep="\t", index=False)
+    
+    else:
+        
+        # Return the same MiXCR output file if the QC is not good
+        df = pd.read_csv(mixcr_clones_file, sep='\t', low_memory=False)    
+        df.to_csv(output_path, sep="\t", index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Quality control filtering using VBCs for Cellecta DriverMap AIR.")
