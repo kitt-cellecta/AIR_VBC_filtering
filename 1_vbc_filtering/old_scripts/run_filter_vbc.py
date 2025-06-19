@@ -75,7 +75,7 @@ def main():
             # Filter VBC
             output_vbc_filtered = os.path.join(args.dir, f"{args.sample}.clones_ALL.vbc_filtered.tsv")
             output_vbc_filtered_prefix = output_vbc_filtered.rsplit('.', 1)[0]
-            py3_vbcFilt = os.path.join(run_filter_dir, "filter_vbc_2.py")
+            py3_vbcFilt = os.path.join(run_filter_dir, "filter_vbc.py")
             run_subprocess(
                 ["python3", py3_vbcFilt, output_bcHop_filtered, output_vbc_filtered_prefix],
                 report_file
@@ -85,7 +85,7 @@ def main():
                 sys.exit(f"Error: Failed to create split filtered clonotypes to different chains...")
 
             # Find passing clonotypes and split clonotypes based on chain
-            py4_split = os.path.join(run_filter_dir, "filter_passing_clonotypes_2.py")
+            py4_split = os.path.join(run_filter_dir, "filter_passing_clonotypes.py")
             run_subprocess(
                 ["python3", py4_split, args.dir],
                 report_file

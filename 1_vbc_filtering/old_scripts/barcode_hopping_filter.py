@@ -7,6 +7,20 @@ def filter_clones(input_file, percentage_threshold):
     
     print("Running barcode hopping filtering...")    
     
+    # Parse arguments
+    parser = argparse.ArgumentParser(description='Filter clone data by read count thresholds')
+    parser.add_argument('input_file', help='Path to input TSV file (format: *.clones_ALL.tsv)')
+    parser.add_argument('percentage', type=float, help='Percentage threshold for filtering (e.g., 5 for 5%)')
+    args = parser.parse_args()
+    
+    if not os.path.exists(args.input_file):
+        print(f"Error: Input file not found: {args.input_file}", file=sys.stderr)
+        sys.exit(1)
+    
+    if args.percentage <= 0 or args.percentage >= 100:
+        print("Error: Percentage must be between 0 and 100", file=sys.stderr)
+        sys.exit(1)
+    
     # Read TSV file
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
     
