@@ -11,7 +11,7 @@ python3 run_filter_vbc.py DIRECTORY SAMPLE_NAME
 ```
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
-&nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
 e.g.
 ```bash
 python3 run_filter_vbc.py ~/Desktop/test_T/ test_T
@@ -26,7 +26,7 @@ python3 run_quantify.py DIRECTORY SAMPLE_NAME
 ```
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
-&nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
 e.g.
 ```bash
 python3 run_quantify.py ~/Desktop/test_T/ test_T
