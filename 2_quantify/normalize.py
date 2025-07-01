@@ -34,7 +34,7 @@ def quantify_templates(directory, sample_name):
             print(f"Error reading maxima file: {str(e)}")
             return
     else:
-        norm_factor = float('nan')
+        normFactor = float('nan')
 
     # Normalize read counts to template counts
     
@@ -46,7 +46,7 @@ def quantify_templates(directory, sample_name):
         df = pd.read_csv(input_path, sep='\t')            
         if 'readCount' in df.columns:
             
-            if not math.isnan(norm_factor):
+            if not math.isnan(normFactor):
             
                 df['templateEstimate'] = df['readCount'].apply(
                     lambda x: round(x / normFactor)

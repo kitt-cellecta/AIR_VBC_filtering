@@ -29,9 +29,9 @@ def qc_mixcr_output(input_file):
     # Check that there are at least N number of clonotypes in df
     clonotype_count = df.shape[0]
     if clonotype_count < 1000:
-        return FALSE
+        return False
     
-    return TRUE
+    return True
 
 ######
 ### barcode_hopping_filter -- barcode hopping filter; remove VBCs with low reads relative to other VBCs of the same clonotype sequence
