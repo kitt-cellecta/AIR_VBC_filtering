@@ -81,7 +81,7 @@ def barcode_hopping_filter(input_file, percentage):
 ######
 
 def find_kde_mimima_threshold(data, barcode_count, sample_name):
-    """Finds threshold using KDE minima detection between two highest maxima."""
+    """Finds threshold using KDE minima detection between two highest maxima."""    
     if len(data) < 2:
         return (2, 0, 0)
     
@@ -104,7 +104,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
     # Find local minima and maxima
     minima = argrelextrema(log_dens, np.less)[0]
     maxima = argrelextrema(log_dens, np.greater)[0]
-    
+        
     # Check if we have at least two maxima
     if len(maxima) == 0:
         return (2, 0, 0)
@@ -119,6 +119,9 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
             # Select the most prominent minimum (lowest log density)
             selected_min = between_minima[np.argmin(log_dens[between_minima])]
             return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
+        
+        if between_minima.size == 0:
+            return (2, 0, 0)
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
@@ -174,7 +177,10 @@ def reads_per_clonotype_filter(input_file, directory, sample_name):
 
         current_key = sorted_keys[i]
         previous_key = sorted_keys[i - 1]
-
+        
+        # Threshold checks:
+        
+        # (1) Check if the thresholds are much different from one another
         # check if previous threshold is 10x less than the current threshold (previousThreshold10x)
         previousThreshold10x = thresholds[current_key] > 10 * thresholds[previous_key]    
 
@@ -193,6 +199,10 @@ def reads_per_clonotype_filter(input_file, directory, sample_name):
             right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
             left_maxes[current_key] = 0							# the first peak is set at 0
             thresholds[current_key] = 2							# default cutoff value = 2
+        
+        # (2) Check if the thresholds are lower than the previous threshold
+        if thresholds[current_key] < thresholds[previous_key]:
+        	thresholds[current_key] = thresholds[previous_key]
             
 	# Save maxima and threshold locations to a file
     maximas_file = os.path.join(directory, f"{sample_name}.kde.maximas.txt")
