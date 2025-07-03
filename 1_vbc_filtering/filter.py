@@ -83,7 +83,7 @@ def barcode_hopping_filter(input_file, percentage):
 def find_kde_mimima_threshold(data, barcode_count, sample_name):
     """Finds threshold using KDE minima detection between two highest maxima."""
     if len(data) < 2:
-        return None
+        return (2, 0, 0)
     
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
     
@@ -93,7 +93,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
     sigma = np.std(data_array, ddof=1)
     bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
-        return None
+        return (2, 0, 0)
     
     # Perform KDE analysis
     kde = KernelDensity(bandwidth=bandwidth)
