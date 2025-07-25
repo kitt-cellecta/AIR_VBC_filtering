@@ -80,9 +80,9 @@ def barcode_hopping_filter(input_file, percentage):
 ###    helper function for reads_per_clonotype_filter
 ######
 
-def find_kde_mimima_threshold(data, barcode_count, sample_name):
+def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh):
     """Finds threshold using KDE minima detection between two highest maxima."""    
-    if len(data) < 2:
+    if len(data) < 10:
         return (2, 0, 0)
     
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
@@ -93,7 +93,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
     sigma = np.std(data_array, ddof=1)
     bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
-        return (2, 0, 0)
+        return (default_low_thresh, 0, 0)
     
     # Perform KDE analysis
     kde = KernelDensity(bandwidth=bandwidth)
@@ -107,7 +107,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
         
     # Check if we have at least two maxima
     if len(maxima) == 0:
-        return (2, 0, 0)
+        return (default_low_thresh, 0, 0)
     
     if len(maxima) == 1:
         left_max = 0 # setting the first peak as non-existent at 0
@@ -121,7 +121,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
             return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
         
         if between_minima.size == 0:
-            return (2, 0, 0)
+            return (default_low_thresh, 0, 0)
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
@@ -145,7 +145,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name):
 ###     output_file = clonotypes filtered by the number of reads
 ######
     
-def reads_per_clonotype_filter(input_file, directory, sample_name):
+def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_thresh):
     
     print("Running VBC filtering...")
     
@@ -162,13 +162,12 @@ def reads_per_clonotype_filter(input_file, directory, sample_name):
     right_maxes = {}
     for barcode_count in range(1, 9):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
-        if not subset.empty:
-            thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold(subset, barcode_count, sample_name)
+        thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
     
     # Check results of KDE analysis across 8 barcodes before writing to file and performing filtering
     # in certain cases, the VBC = 4 or higher have no first peak but there might be a small peak after the second peak 
     # for a couple of clonotypes. we know that the increase of values from VBC = 1, 2, etc is a slight doubling, so
-    # we're using this information to check if the value of the filter went haywire. the cutoff that we're using is 10x
+    # we're using this information to check if the value of the filter went haywire. the cutoff that we're using is 20x
     # increase.
     
     sorted_keys = sorted(thresholds.keys())
@@ -180,25 +179,24 @@ def reads_per_clonotype_filter(input_file, directory, sample_name):
         
         # Threshold checks:
         
-        # (1) Check if the thresholds are much different from one another
-        # check if previous threshold is 10x less than the current threshold (previousThreshold10x)
-        previousThreshold10x = thresholds[current_key] > 10 * thresholds[previous_key]    
+        # (1) Check if the neighboring thresholds are much different from one another
+        # check if previous threshold is 10x less than the current threshold (previousThresholdFoldx)
+        if thresholds[current_key] is not default_low_thresh and thresholds[previous_key] is not default_low_thresh:
+            previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
+        else: 
+            previousThresholdFoldx = False
 
-        # check if next threshold is 10x more than the current threshold (nextThreshold10x)   
-        if current_key < len(sorted_keys):
+        # check if next threshold is 10x more than the current threshold (nextThresholdFoldx)   
+        if thresholds[current_key] is not default_low_thresh and current_key < len(sorted_keys):
             next_key = sorted_keys[i + 1]
-            nextThreshold10x = thresholds[next_key] > 10 * thresholds[current_key]
+            if thresholds[next_key] is not default_low_thresh:
+                nextThresholdFoldx = thresholds[next_key] > 20 * thresholds[current_key]
         else:
-            nextThreshold10x = False
-        
-        # check if the previous threshold is just a default threshold setting (previousThresholdDefault)
-        previousThresholdDefault = thresholds[previous_key] == 2
+            nextThresholdFoldx = False
 
-        # modify thresholds file if previousThreshold10x, nextThreshold10x and previousThresholdDefault are all True
-        if previousThreshold10x and nextThreshold10x and previousThresholdDefault: 
-            right_maxes[current_key] = left_maxes[current_key] 	# the first peak is actually the second peak
-            left_maxes[current_key] = 0							# the first peak is set at 0
-            thresholds[current_key] = 2							# default cutoff value = 2
+        # modify thresholds file if previousThresholdFoldx or nextThresholdFoldx is True
+        if previousThresholdFoldx or nextThresholdFoldx: 
+            thresholds[current_key] = thresholds[previous_key]					
         
         # (2) Check if the thresholds are lower than the previous threshold
         if thresholds[current_key] < thresholds[previous_key]:
@@ -353,6 +351,8 @@ def main(input_file, directory, sample_name):
     Step 3: filter_passing_clonotypes -- generate final table
     """
 	
+    default_low_thresh = 2 # default value for threshold for VBC clonotype filtering
+	
     # Validate Inputs
     if not os.path.exists(input_file):
         print(f"Error: Input file not found: {input_file}", file=sys.stderr)
@@ -371,7 +371,7 @@ def main(input_file, directory, sample_name):
         
         # Run VBC filtering steps if data quality is good
         df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage)
-        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name)
+        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name, default_low_thresh)
         df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered)
     
         df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
