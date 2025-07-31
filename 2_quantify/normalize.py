@@ -12,7 +12,7 @@ import argparse
 ###     $SAMPLE_NAME.clones_ALL.quantified.tsv - clonotype table with molecular estimates (all chains in single table)
 ######
 
-def quantify_templates(directory, sample_name):
+def quantify_templates(directory, sample_name, mode="bulk"):
     
     # Check if the analysis has already been completed
     report_file = f"{sample_name}.templateEstimation.report.txt"
@@ -43,29 +43,22 @@ def quantify_templates(directory, sample_name):
             
     try:
 
-        df = pd.read_csv(input_path, sep='\t')            
+        df = pd.read_csv(input_path, sep='\t')
         if 'readCount' in df.columns:
-            
             if not math.isnan(normFactor):
-            
                 df['templateEstimate'] = df['readCount'].apply(
                     lambda x: round(x / normFactor)
                 )
-                df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1 # round up values that were rounded down to 0
-            
+                df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1
             else:
-            
-                df['templateEstimate'] = np.nan # if norm factor is NA, set template estimates as NA    
-                
+                df['templateEstimate'] = float('nan')
             output_file = f"{sample_name}.clones_ALL.quantified.tsv"
             output_path = os.path.join(directory, output_file)
             df.to_csv(output_path, sep='\t', index=False)
             if os.path.exists(output_path):
                 os.remove(input_path)
-                
         else:
             print(f"'readCount' column missing in {input_file}")
-                
     except Exception as e:
         print(f"Error processing {input_file}: {str(e)}")
             
@@ -83,14 +76,15 @@ def quantify_templates(directory, sample_name):
     print(f"Template estimation analysis completed for {sample_name}\n")
 
 if __name__ == "__main__":
-    # Set up argument parser
+    # Set up argument Parser
     parser = argparse.ArgumentParser(description="Quantify templates based on normFactor")
     parser.add_argument("directory", help="Directory containing the sample_name files")
     parser.add_argument("sample_name", help="sample_name name")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
 
     # Parse arguments
     args = parser.parse_args()
     
     # Run the processing function
-    quantify_templates(args.directory, args.sample_name)
+    quantify_templates(args.directory, args.sample_name, mode=args.mode)
 

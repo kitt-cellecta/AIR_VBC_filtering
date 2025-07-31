@@ -42,15 +42,18 @@ def qc_mixcr_output(input_file):
 ###    output = barcode hopping filtered tsv
 ######
 
-def barcode_hopping_filter(input_file, percentage):
+def barcode_hopping_filter(input_file, percentage, mode="bulk"):
     
     print("Running barcode hopping filtering...")    
     
     # Read TSV file
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
-    
-    # Calculate maximum read count per clone group
-    df['group_max'] = df.groupby('cloneId')['readCount'].transform('max')
+    if mode == "single_cell":
+        group_cols = ['cloneId', 'tagValueMIWELLNAME']
+    else:
+        group_cols = ['cloneId']
+    # Calculate maximum read count per cloneId/tagValueMIWELLNAME group
+    df['group_max'] = df.groupby(group_cols)['readCount'].transform('max')
     
     # Filter rows where readCount >= fraction_threshold of group maximum
     fraction_threshold = percentage/100
@@ -145,22 +148,27 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
 ###     output_file = clonotypes filtered by the number of reads
 ######
     
-def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_thresh):
+def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_thresh, mode="bulk"):
     
     print("Running VBC filtering...")
     
     df = input_file
-    
-    # Calculate barcode counts and total reads per clone
-    clone_barcode_counts = df.groupby('cloneId')['tagValueMIBC'].nunique()
-    clone_total_reads = df.groupby('cloneId')['readCount'].sum().reset_index()
-    clone_total_reads['barcode_count'] = clone_total_reads['cloneId'].map(clone_barcode_counts)
+    if mode == "single_cell":
+        group_cols = ['cloneId', 'tagValueMIWELLNAME']
+        n_barcodes = 4
+    else:
+        group_cols = ['cloneId']
+        n_barcodes = 8
+    # Calculate barcode counts and total reads per cloneId/tagValueMIWELLNAME
+    clone_barcode_counts = df.groupby(group_cols)['tagValueMIBC'].nunique()
+    clone_total_reads = df.groupby(group_cols)['readCount'].sum().reset_index()
+    clone_total_reads['barcode_count'] = clone_total_reads.set_index(group_cols).index.map(clone_barcode_counts)
 
     # Perform KDE analysis
     thresholds = {}
     left_maxes = {}
     right_maxes = {}
-    for barcode_count in range(1, 9):
+    for barcode_count in range(1, n_barcodes + 1):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
         thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
     
@@ -180,7 +188,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         # Threshold checks:
         
         # (1) Check if the neighboring thresholds are much different from one another
-        # check if previous threshold is 10x less than the current threshold (previousThresholdFoldx)
+        # check if previous threshold is 20x less than the current threshold (previousThresholdFoldx)
         if thresholds[current_key] is not default_low_thresh and thresholds[previous_key] is not default_low_thresh:
             previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
         else: 
@@ -202,18 +210,17 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         if thresholds[current_key] < thresholds[previous_key]:
         	thresholds[current_key] = thresholds[previous_key]
             
-	# Save maxima and threshold locations to a file
+    # Save maxima and threshold locations to a file
     maximas_file = os.path.join(directory, f"{sample_name}.kde.maximas.txt")
     with open(maximas_file, "a") as f:
-        for barcode_count in range(1, 9):
+        for barcode_count in range(1, n_barcodes + 1):
             f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
     
     # Plot histograms and KDEs for clones
     histogram_file = os.path.join(directory, f"{sample_name}.histograms.pdf")
-    fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(16, 8))
-    axes = axes.flatten()
-
-    for i, barcode_count in enumerate(range(1, 9)):
+    fig, axes = plt.subplots(nrows=1 if n_barcodes <= 4 else 2, ncols=n_barcodes if n_barcodes <= 4 else 4, figsize=(4*n_barcodes if n_barcodes <= 4 else 16, 8 if n_barcodes > 4 else 4))
+    axes = axes.flatten() if n_barcodes > 1 else [axes]
+    for i, barcode_count in enumerate(range(1, n_barcodes + 1)):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]
 
         if not subset.empty:
@@ -240,13 +247,13 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         lambda row: row['readCount'] >= thresholds.get(row['barcode_count'], np.inf),
         axis=1
     )
-    clones_to_keep = clone_total_reads[clone_total_reads['keep']]['cloneId']
-    final_data = df[df['cloneId'].isin(clones_to_keep)].copy()
+    clones_to_keep = clone_total_reads[clone_total_reads['keep']][group_cols]
+    final_data = df.merge(clones_to_keep, on=group_cols, how='inner').copy()
 
-    # Group final data by cloneId and calculate summary statistics
-    grouped_final_data = final_data.groupby('cloneId').first().reset_index()
-    grouped_final_data['readCount'] = final_data.groupby('cloneId')['readCount'].sum().values
-    grouped_final_data['barcode_count'] = grouped_final_data['cloneId'].map(clone_barcode_counts)
+    # Group final data by cloneId/tagValueMIWELLNAME and calculate summary statistics
+    grouped_final_data = final_data.groupby(group_cols).first().reset_index()
+    grouped_final_data['readCount'] = final_data.groupby(group_cols)['readCount'].sum().values
+    grouped_final_data['barcode_count'] = grouped_final_data.set_index(group_cols).index.map(clone_barcode_counts)
     grouped_final_data = grouped_final_data.drop(columns=['tagValueMIBC'], errors='ignore')
     grouped_final_data = grouped_final_data.sort_values("readCount", ascending=False)
 
@@ -270,15 +277,19 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
 ###     helper function for filter_passing_clonotypes
 ######
 
-def simplify_clonotypes_table(df_filtered):
+def simplify_clonotypes_table(df_filtered, mode="bulk"):
     """
     Simplifies the clonotypes table by creating read counts column for each VBC 
     This reduces the number of rows on the table
     Then it creates a new column for the total read counts called readCount
     """
+    if mode == "single_cell":
+        index_cols = ['cloneId', 'tagValueMIWELLNAME']
+    else:
+        index_cols = ['cloneId']
     # Create simplified table for readCount values, set value to 0 if the BC does not have a particular clonotype
     df_pivot = df_filtered.pivot_table(
-        index='cloneId',
+        index=index_cols,
         columns='tagValueMIBC',
         values='readCount',
         fill_value=0
@@ -294,8 +305,8 @@ def simplify_clonotypes_table(df_filtered):
     df_pivot = df_pivot[bc_columns]
     df_pivot['readCount'] = df_pivot.sum(axis=1)
 
-    # Get metadata from row with max readCount per cloneId
-    idx = df_filtered.groupby('cloneId')['readCount'].idxmax()
+    # Get metadata from row with max readCount per cloneId/tagValueMIWELLNAME
+    idx = df_filtered.groupby(index_cols)['readCount'].idxmax()
     other_columns = df_filtered.columns.difference(
         ['tagValueMIBC', 'readCount', 'readFraction']
     )
@@ -304,7 +315,7 @@ def simplify_clonotypes_table(df_filtered):
     # Merge pivot table with metadata
     df_final = df_pivot.reset_index().merge(
         df_other,
-        on='cloneId',
+        on=index_cols,
         how='left'
     )
     
@@ -320,7 +331,7 @@ def simplify_clonotypes_table(df_filtered):
 ###     df_passing_clonotypes = simplified df post-barcode hopping and reads per clonotype filters
 ######
 
-def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered):
+def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"):
 
     df_file1 = df_bcHop_filtered
     df_file2 = df_rpclon_filtered
@@ -330,7 +341,7 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered):
     df_filtered = df_file1[df_file1["targetSequences"].isin(unique_target_sequences)]
     
 	# Create simplified data frame with simplify_clonotypes_table
-    df_simplified = simplify_clonotypes_table(df_filtered)
+    df_simplified = simplify_clonotypes_table(df_filtered, mode=mode)
 
     return df_simplified
     
@@ -344,7 +355,7 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered):
 ###     df_passing_clonotypes = simplified df post-barcode hopping and reads per clonotype filters
 ######
     
-def main(input_file, directory, sample_name):
+def main(input_file, directory, sample_name, mode="bulk"):
     """
     Step 1: barcode_hopping_filter -- filter barcode hopping 
     Step 2: reads_per_clonotype_filter -- filter low read count clonotypes
@@ -370,9 +381,9 @@ def main(input_file, directory, sample_name):
     if qcIsGood:
         
         # Run VBC filtering steps if data quality is good
-        df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage)
-        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name, default_low_thresh)
-        df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered)
+        df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage, mode=mode)
+        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name, default_low_thresh, mode=mode)
+        df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode=mode)
     
         df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
         df_passing_clonotypes.to_csv(output_path, sep="\t", index=False)
@@ -388,5 +399,6 @@ if __name__ == "__main__":
     parser.add_argument("input_file", type=str, help="Path to input TSV file.")
     parser.add_argument("directory", type=str, help="Directory of MiXCR output files")
     parser.add_argument("sample_name", type=str, help="Prefix for output files.")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
     args = parser.parse_args()
-    main(args.input_file, args.directory, args.sample_name)
+    main(args.input_file, args.directory, args.sample_name, mode=args.mode)

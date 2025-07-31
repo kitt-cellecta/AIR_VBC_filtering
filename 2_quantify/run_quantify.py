@@ -16,44 +16,32 @@ import pandas as pd
 ######
 
 def main():
-    
     parser = argparse.ArgumentParser(description='Process clones files and filter low abundance clones')
     parser.add_argument('dir', help='Input directory containing initial data files')
     parser.add_argument('sample', help='Sample name prefix for output files')
+    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell'], default='bulk', help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
     args = parser.parse_args()
     sample_name = args.sample
     directory = args.dir
-	
+    mode = args.mode
     if not directory.endswith(os.path.sep):
         directory += os.path.sep
-	
     run_filter_dir = os.path.dirname(os.path.abspath(__file__))
-	
     if not os.path.isdir(directory):
         sys.exit(f"Error: Directory '{directory}' does not exist")
-
     try:
-            
-        # run quantification process
-        
         quantification_output = os.path.join(directory, f"{sample_name}.clones_ALL.quantified.tsv")
         py1_quantify = os.path.join(run_filter_dir, "normalize.py")
-        subprocess.run(["python3", py1_quantify, directory, sample_name])
-            
+        quantify_cmd = ["python3", py1_quantify, directory, sample_name, "--mode", mode]
+        subprocess.run(quantify_cmd)
         if not os.path.exists(quantification_output):
             sys.exit(f"Error: Failed to create {quantification_output}")
-		
-		# split the quantified files into each unique chain value 
-		
         df = pd.read_csv(quantification_output, sep='\t')
         chains = df['chain'].unique()
         for chain_value in chains:
             chain_df = df[df['chain'] == chain_value]
             output_file = os.path.join(directory, f"{sample_name}.clones_{chain_value}.quantified.tsv")
             chain_df.to_csv(output_file, sep='\t', index=False)
-		
-		# check if any of the chain specific files are generated
-		
         chain_values = ['TRA', 'TRB', 'TRG', 'TRD', 'IGH', 'IGK', 'IGL']
         any_exists = any(
             os.path.exists(os.path.join(directory, f"{sample_name}.clones_{chain}.quantified.tsv"))
@@ -64,7 +52,6 @@ def main():
             print(f"Removed input file: {quantification_output}")
         else:
             sys.exit("Cannot generate any of the chain-specific quantified clonotype tables...")
-		
     except subprocess.CalledProcessError as e:
         sys.exit(f"Pipeline failed at {e.cmd[1]} with error {e.returncode}")
 
