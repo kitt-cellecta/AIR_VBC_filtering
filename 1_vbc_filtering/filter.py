@@ -115,7 +115,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
     if len(maxima) == 1:
         left_max = 0 # setting the first peak as non-existent at 0
         right_max = maxima[0]
-		
+        
         # Find minima between these two maxima
         between_minima = minima[(minima > left_max) & (minima < right_max)]
         if between_minima.size > 0:
@@ -208,7 +208,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         
         # (2) Check if the thresholds are lower than the previous threshold
         if thresholds[current_key] < thresholds[previous_key]:
-        	thresholds[current_key] = thresholds[previous_key]
+            thresholds[current_key] = thresholds[previous_key]
             
     # Save maxima and threshold locations to a file
     maximas_file = os.path.join(directory, f"{sample_name}.kde.maximas.txt")
@@ -311,7 +311,7 @@ def simplify_clonotypes_table(df_filtered, mode="bulk"):
         ['tagValueMIBC', 'readCount', 'readFraction']
     )
     df_other = df_filtered.loc[idx, other_columns].reset_index(drop=True)
-	
+    
     # Merge pivot table with metadata
     df_final = df_pivot.reset_index().merge(
         df_other,
@@ -333,14 +333,20 @@ def simplify_clonotypes_table(df_filtered, mode="bulk"):
 
 def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"):
 
-    df_file1 = df_bcHop_filtered
-    df_file2 = df_rpclon_filtered
+    if mode == "single_cell":
+        # Filter by both targetSequences and tagValueMIWELLNAME
+        key_cols = ["targetSequences", "tagValueMIWELLNAME"]
+        df_rpclon_filtered = df_rpclon_filtered.dropna(subset=["targetSequences", "tagValueMIWELLNAME"])
+        keys = set(tuple(x) for x in df_rpclon_filtered[key_cols].values)
+        df_filtered = df_bcHop_filtered[
+            df_bcHop_filtered[key_cols].apply(tuple, axis=1).isin(keys)
+        ]
+    else:
+        # Bulk mode: filter by targetSequences only
+        unique_target_sequences = set(df_rpclon_filtered["targetSequences"].dropna())
+        df_filtered = df_bcHop_filtered[df_bcHop_filtered["targetSequences"].isin(unique_target_sequences)]
 
-    # Filter rows in barcode hopping filtered file where targetSequences match those in VBC filtered file
-    unique_target_sequences = set(df_file2["targetSequences"].dropna())
-    df_filtered = df_file1[df_file1["targetSequences"].isin(unique_target_sequences)]
-    
-	# Create simplified data frame with simplify_clonotypes_table
+    # Create simplified data frame with simplify_clonotypes_table
     df_simplified = simplify_clonotypes_table(df_filtered, mode=mode)
 
     return df_simplified
@@ -361,23 +367,23 @@ def main(input_file, directory, sample_name, mode="bulk"):
     Step 2: reads_per_clonotype_filter -- filter low read count clonotypes
     Step 3: filter_passing_clonotypes -- generate final table
     """
-	
+    
     default_low_thresh = 2 # default value for threshold for VBC clonotype filtering
-	
+    
     # Validate Inputs
     if not os.path.exists(input_file):
         print(f"Error: Input file not found: {input_file}", file=sys.stderr)
         sys.exit(1)
-	
+    
     percentage = 5 # default setting for barcode hopping filter
     mixcr_clones_file = input_file
-	
-	# Check Data Quality
-	
+    
+    # Check Data Quality
+    
     qcIsGood = qc_mixcr_output(mixcr_clones_file)
     output_filename = f"{sample_name}.clones_ALL.filtered.tsv"
     output_path = os.path.join(directory, output_filename)	
-	
+    
     if qcIsGood:
         
         # Run VBC filtering steps if data quality is good
