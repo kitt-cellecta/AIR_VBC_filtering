@@ -83,10 +83,10 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
 ###    helper function for reads_per_clonotype_filter
 ######
 
-def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh):
+def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.05):
     """Finds threshold using KDE minima detection between two highest maxima."""    
     if len(data) < 10:
-        return (2, 0, 0)
+        return (default_low_thresh, 0, 0)
     
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
     
@@ -124,7 +124,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
             return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
         
         if between_minima.size == 0:
-            return (default_low_thresh, 0, 0)
+            return (default_low_thresh, 0, 10**x[right_max][0])
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
@@ -137,7 +137,20 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
         if between_minima.size > 0:
             # Select the most prominent minimum (lowest log density)
             selected_min = between_minima[np.argmin(log_dens[between_minima])]
-            return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
+            
+            # Check if the selected minimum is a valid valley
+            min_log_dens = log_dens[selected_min]
+            left_peak = log_dens[left_max]
+            right_peak = log_dens[right_max]
+
+            # Calculate relative depth of valley compared to smaller peak
+            peak_max = min(left_peak, right_peak)
+            relative_depth = abs((peak_max - min_log_dens)/peak_max)
+            if relative_depth >= min_valley_depth:
+                return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
+            else:
+                # Valley is too shallow, consider as one peak
+                return (default_low_thresh, 0, 10**x[right_max][0])
 
 ######
 ### reads_per_clonotype_filter -- filter clonotypes with low number of reads using VBC bins
@@ -172,6 +185,8 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
         thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
     
+    # Threshold checks:
+
     # Check results of KDE analysis across 8 barcodes before writing to file and performing filtering
     # in certain cases, the VBC = 4 or higher have no first peak but there might be a small peak after the second peak 
     # for a couple of clonotypes. we know that the increase of values from VBC = 1, 2, etc is a slight doubling, so
@@ -179,18 +194,20 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     # increase.
     
     sorted_keys = sorted(thresholds.keys())
-    
+    original_thresholds = thresholds.copy()
+
     for i in range(1, len(sorted_keys)):
 
         current_key = sorted_keys[i]
         previous_key = sorted_keys[i - 1]
         
-        # Threshold checks:
-        
         # (1) Check if the neighboring thresholds are much different from one another
         # check if previous threshold is 20x less than the current threshold (previousThresholdFoldx)
         if thresholds[current_key] is not default_low_thresh and thresholds[previous_key] is not default_low_thresh:
-            previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
+            if thresholds[previous_key] > 10: # prevents threshold changes in cases where VBC = 1, 2 are much lower than the rest
+                previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
+            else:
+                previousThresholdFoldx = False
         else: 
             previousThresholdFoldx = False
 
@@ -199,6 +216,8 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             next_key = sorted_keys[i + 1]
             if thresholds[next_key] is not default_low_thresh:
                 nextThresholdFoldx = thresholds[next_key] > 20 * thresholds[current_key]
+            else:
+                nextThresholdFoldx = False
         else:
             nextThresholdFoldx = False
 
@@ -269,7 +288,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     print(f"Reads removed: {original_rows_readSum - filtered_rows_readSum:,} "
           f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
     print()
-    
+
     return grouped_final_data
 
 ######
