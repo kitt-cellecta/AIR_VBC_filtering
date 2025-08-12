@@ -7,14 +7,15 @@ The two scripts below both use the validation barcodes (VBCs) in the Cellecta Dr
 ### Barcode Hopping and VBC filtering <br />
 
 ```bash
-python3 run_filter_vbc.py DIRECTORY SAMPLE_NAME
+python3 run_filter_vbc.py $DIRECTORY $SAMPLE_NAME --mode $MODE
 ```
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk' or 'single_cell' (Default: 'bulk') <br />
 e.g.
 ```bash
-python3 run_filter_vbc.py ~/Desktop/test_T/ test_T
+python3 run_filter_vbc.py ~/Desktop/test_T/ test_T --mode bulk
 ```
 
 ---
@@ -22,12 +23,13 @@ python3 run_filter_vbc.py ~/Desktop/test_T/ test_T
 ### Template Molecule Estimation
 
 ```bash
-python3 run_quantify.py DIRECTORY SAMPLE_NAME
+python3 run_quantify.py $DIRECTORY $SAMPLE_NAME --mode $MODE
 ```
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk' or 'single_cell' (Default: 'bulk') <br />
 e.g.
 ```bash
-python3 run_quantify.py ~/Desktop/test_T/ test_T
+python3 run_quantify.py ~/Desktop/test_T/ test_T --mode bulk
 ```
