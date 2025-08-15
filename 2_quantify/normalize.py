@@ -46,10 +46,11 @@ def quantify_templates(directory, sample_name, mode="bulk"):
         df = pd.read_csv(input_path, sep='\t')
         if 'readCount' in df.columns:
             if not math.isnan(normFactor):
-                df['templateEstimate'] = df['readCount'].apply(
-                    lambda x: round(x / normFactor)
-                )
-                df.loc[df['templateEstimate'] == 0, 'templateEstimate'] = 1
+                df['templateEstimate'] = df['readCount'].apply(lambda x: int(np.floor(x / normFactor + 0.5)))  # avoids Python round's "banker's rounding"
+                # count the number of 0s in templateEstimate which needs to be filtered
+                before_rows = len(df)
+                df = df[df['templateEstimate'] != 0].copy()
+                normalizationFiltered = before_rows - len(df)
             else:
                 df['templateEstimate'] = float('nan')
             output_file = f"{sample_name}.clones_ALL.quantified.tsv"
@@ -57,8 +58,10 @@ def quantify_templates(directory, sample_name, mode="bulk"):
             df.to_csv(output_path, sep='\t', index=False)
             if os.path.exists(output_path):
                 os.remove(input_path)
+        
         else:
             print(f"'readCount' column missing in {input_file}")
+    
     except Exception as e:
         print(f"Error processing {input_file}: {str(e)}")
             
@@ -67,6 +70,10 @@ def quantify_templates(directory, sample_name, mode="bulk"):
     with open(report_path, 'w') as report:
         report.write("Template Estimation Analysis Completed\n")
         report.write(f"Norm Factor: {round_normFactor}\n")
+        if 'normalizationFiltered' in locals():
+            report.write(f"Normalization Filtered: {normalizationFiltered} rows removed\n")
+        else:
+            report.write("Normalization Filtered: No rows removed\n")
         report.write("Processed Files:\n")
         report.write(f"- {output_file}\n")
     
