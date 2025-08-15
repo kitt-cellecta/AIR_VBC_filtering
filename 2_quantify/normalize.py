@@ -74,11 +74,7 @@ def quantify_templates(directory, sample_name, mode="bulk"):
             report.write("Normalization Filtered/Templates Estimated ~ 0: No clonotypes removed\n")
         if 'output_file' in locals():
             report.write("Processed Files:\n")
-            report.write(f"- {output_file}\n")
-    
-    if os.path.exists(report_path):
-        print("OK")
-        #os.remove(maxima_path) 
+            report.write(f"- {output_file}\n") 
     
     print(f"Template estimation analysis completed for {sample_name}\n")
 

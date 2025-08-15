@@ -145,9 +145,9 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
             return (10**x[selected_min][0],            # threshold cutoff 
                     10**x[left_max][0],                # left peak max location 
                     10**x[right_max][0],               # right peak max location
-                    log_dens[selected_min],            # threshold cutoff KDE value
-                    log_dens[left_max],                # left peak max KDE value
-                    log_dens[right_max]                # right peak max KDE value
+                    np.exp(log_dens[selected_min]),            # threshold cutoff KDE value 
+                    np.exp(log_dens[left_max]),                # left peak max KDE value
+                    np.exp(log_dens[right_max])                # right peak max KDE value
             )
         
         if between_minima.size == 0:
@@ -156,7 +156,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
                     10**x[right_max][0],               # right peak max location
                     0,                                 # threshold cutoff KDE value
                     0,                                 # left peak max KDE value
-                    log_dens[right_max]                # right peak max KDE value
+                    np.exp(log_dens[right_max])                # right peak max KDE value
             )
             
     if len(maxima) >= 2:
@@ -183,9 +183,9 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
                 return (10**x[selected_min][0],            # threshold cutoff 
                         10**x[left_max][0],                # left peak max location 
                         10**x[right_max][0],               # right peak max location
-                        log_dens[selected_min],            # threshold cutoff KDE value
-                        log_dens[left_max],                # left peak max KDE value
-                        log_dens[right_max]                # right peak max KDE value
+                        np.exp(log_dens[selected_min]),            # threshold cutoff KDE value
+                        np.exp(log_dens[left_max]),                # left peak max KDE value
+                        np.exp(log_dens[right_max])                # right peak max KDE value
                 )
             else:
                 # Valley is too shallow, consider as one peak
@@ -194,7 +194,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
                         10**x[right_max][0],               # right peak max location
                         0,                                 # threshold cutoff KDE value
                         0,                                 # left peak max KDE value
-                        log_dens[right_max]                # right peak max KDE value
+                        np.exp(log_dens[right_max])                # right peak max KDE value
                 )
 
 ######
@@ -338,9 +338,10 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     # whether there are enough data points in the VBC=1 bin and whether the threshold and
     # second peak are sufficiently separated.
     
-    # Check reliability of VBC = 1 normalization, if reliable dont change thresholding 
+    # Check reliability of VBC = 1 normalization, if reliable dont change normalization value. 
     # If not, check VBC = 2 normalization reliability. If reliable, use VBC = 2 threshold for VBC = 1. 
-    # # If not, set VBC = 1 threshold to NaN
+    # If not, check VBC = 3 normalization reliability. If reliable, use VBC = 3 threshold for VBC = 1.
+    # If not, set VBC = 1 normalization to NaN to prevent normalization. 
 
     vbc1_unreliability = is_normalization_unreliable(1, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
     if vbc1_unreliability == True:
@@ -348,9 +349,14 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         vbc2_unreliability = is_normalization_unreliable(2, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
         if vbc2_unreliability == True:
             print(f"WARNING: VBC=2 normalization may be unreliable.")
-            thresholds[1] = float('nan')
+            vbc3_unreliability = is_normalization_unreliable(3, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
+            if vbc3_unreliability == True:
+                print(f"WARNING: VBC=3 normalization may be unreliable.")      
+                right_maxes[1] = float('nan')
+            else:
+                right_maxes[1] = right_maxes[3]/3 # peak of VBC = 3 is 3x that of VBC = 1
         else:
-            right_maxes[1] = right_maxes[2]
+            right_maxes[1] = right_maxes[2]/2 # peak of VBC = 2 is 2x that of VBC = 1
     
     #---------------------------------------------------------------------------------------------------#
     #---------------------------------------------------------------------------------------------------#            
@@ -359,6 +365,9 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     maximas_file = os.path.join(directory, f"{sample_name}.kde.maximas.txt")
     with open(maximas_file, "a") as f:
         for barcode_count in range(1, n_barcodes + 1):
+            # write in csv: thresholds, left max right max
+            #f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\t{thresholds_kde_values[barcode_count]}\t{left_maxes_kde_values[barcode_count]}\t{right_maxes_kde_values[barcode_count]}\n")
+            # write in csv: thresholds, left max, right max, threshold density, left max density, right max density
             f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
     
     # Plot histograms and KDEs for clones
