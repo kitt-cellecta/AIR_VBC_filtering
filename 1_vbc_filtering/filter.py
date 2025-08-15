@@ -350,7 +350,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             print(f"WARNING: VBC=2 normalization may be unreliable.")
             thresholds[1] = float('nan')
         else:
-            thresholds[1] = thresholds[2]
+            right_maxes[1] = right_maxes[2]
     
     #---------------------------------------------------------------------------------------------------#
     #---------------------------------------------------------------------------------------------------#            
@@ -373,7 +373,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             sns.histplot(subset['readCount'], bins=30, kde=True, ax=ax, log_scale=True)
 
             threshold = thresholds.get(barcode_count)
-            if threshold:
+            if threshold and not np.isnan(threshold):
                 ax.axvline(threshold, color='red', linestyle='dashed', linewidth=2)
                 ax.text(threshold, ax.get_ylim()[1] * 0.8, f'Threshold: {int(threshold)}',
                         color='red', ha='right', fontsize=10, weight='bold')

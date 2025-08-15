@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import math
 import argparse
+import numpy as np
 
 ######
 ### quantify_templates 
@@ -42,7 +43,6 @@ def quantify_templates(directory, sample_name, mode="bulk"):
     input_path = os.path.join(directory, input_file)
             
     try:
-
         df = pd.read_csv(input_path, sep='\t')
         if 'readCount' in df.columns:
             if not math.isnan(normFactor):
@@ -58,10 +58,8 @@ def quantify_templates(directory, sample_name, mode="bulk"):
             df.to_csv(output_path, sep='\t', index=False)
             if os.path.exists(output_path):
                 os.remove(input_path)
-        
         else:
             print(f"'readCount' column missing in {input_file}")
-    
     except Exception as e:
         print(f"Error processing {input_file}: {str(e)}")
             
@@ -71,14 +69,16 @@ def quantify_templates(directory, sample_name, mode="bulk"):
         report.write("Template Estimation Analysis Completed\n")
         report.write(f"Norm Factor: {round_normFactor}\n")
         if 'normalizationFiltered' in locals():
-            report.write(f"Normalization Filtered: {normalizationFiltered} rows removed\n")
+            report.write(f"Normalization Filtered/Templates Estimated ~ 0: {normalizationFiltered} clonotypes removed\n")
         else:
-            report.write("Normalization Filtered: No rows removed\n")
-        report.write("Processed Files:\n")
-        report.write(f"- {output_file}\n")
+            report.write("Normalization Filtered/Templates Estimated ~ 0: No clonotypes removed\n")
+        if 'output_file' in locals():
+            report.write("Processed Files:\n")
+            report.write(f"- {output_file}\n")
     
     if os.path.exists(report_path):
-        os.remove(maxima_path) 
+        print("OK")
+        #os.remove(maxima_path) 
     
     print(f"Template estimation analysis completed for {sample_name}\n")
 
