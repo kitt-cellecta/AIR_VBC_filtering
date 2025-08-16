@@ -85,16 +85,16 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
 
 def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.05):
     """Finds threshold using KDE minima detection between two highest maxima."""
-    
+
     # Function return format: (threshold cutoff, left peak max, right peak max, threshold cutoff kde value)
              
     if len(data) < 10:
-        return (default_low_thresh, # threshold cutoff
-                0,                  # left peak max location
-                0,                  # right peak max location
-                0,                  # threshold cutoff KDE value
-                0,                  # left peak max KDE value
-                0                   # right peak max KDE value
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
         )
     
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
@@ -105,12 +105,12 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
     sigma = np.std(data_array, ddof=1)
     bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
-        return (default_low_thresh, # threshold cutoff
-                0,                  # left peak max location
-                0,                  # right peak max location
-                0,                  # threshold cutoff KDE value
-                0,                  # left peak max KDE value
-                0                   # right peak max KDE value
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
         )
     
     # Perform KDE analysis
@@ -125,12 +125,12 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
         
     # Check if we have at least two maxima
     if len(maxima) == 0:
-        return (default_low_thresh, # threshold cutoff
-                0,                  # left peak max location
-                0,                  # right peak max location
-                0,                  # threshold cutoff KDE value
-                0,                  # left peak max KDE value
-                0                   # right peak max KDE value
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
         )
     
     if len(maxima) == 1:
@@ -145,18 +145,19 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
             return (10**x[selected_min][0],            # threshold cutoff 
                     10**x[left_max][0],                # left peak max location 
                     10**x[right_max][0],               # right peak max location
-                    np.exp(log_dens[selected_min]),            # threshold cutoff KDE value 
-                    np.exp(log_dens[left_max]),                # left peak max KDE value
-                    np.exp(log_dens[right_max])                # right peak max KDE value
+                    np.exp(log_dens[selected_min]),    # threshold cutoff KDE value 
+                    np.exp(log_dens[left_max]),        # left peak max KDE value
+                    np.exp(log_dens[right_max])        # right peak max KDE value
             )
         
+        # unlikely case because there's a maxima (so there has to be a low point)
         if between_minima.size == 0:
-            return (default_low_thresh,                # threshold cutoff 
-                    0,                                 # left peak max location 
-                    10**x[right_max][0],               # right peak max location
-                    0,                                 # threshold cutoff KDE value
-                    0,                                 # left peak max KDE value
-                    np.exp(log_dens[right_max])                # right peak max KDE value
+            return (default_low_thresh,                  # threshold cutoff 
+                    10**x[left_max][0],                  # left peak max location 
+                    10**x[right_max][0],                 # right peak max location
+                    np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
+                    np.exp(log_dens[left_max]),          # left peak max KDE value
+                    np.exp(log_dens[right_max])          # right peak max KDE value
             )
             
     if len(maxima) >= 2:
@@ -177,24 +178,25 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
             right_peak = log_dens[right_max]
 
             # Calculate relative depth of valley compared to smaller peak
-            peak_max = min(left_peak, right_peak)
-            relative_depth = abs((peak_max - min_log_dens)/peak_max)
+            peak_max_lower = min(left_peak, right_peak)
+            relative_depth = abs((peak_max_lower - min_log_dens)/peak_max_lower)
             if relative_depth >= min_valley_depth:
                 return (10**x[selected_min][0],            # threshold cutoff 
                         10**x[left_max][0],                # left peak max location 
                         10**x[right_max][0],               # right peak max location
-                        np.exp(log_dens[selected_min]),            # threshold cutoff KDE value
-                        np.exp(log_dens[left_max]),                # left peak max KDE value
-                        np.exp(log_dens[right_max])                # right peak max KDE value
+                        np.exp(log_dens[selected_min]),    # threshold cutoff KDE value
+                        np.exp(log_dens[left_max]),        # left peak max KDE value
+                        np.exp(log_dens[right_max])        # right peak max KDE value
                 )
             else:
                 # Valley is too shallow, consider as one peak
-                return (default_low_thresh,                # threshold cutoff 
-                        0,                                 # left peak max location 
-                        10**x[right_max][0],               # right peak max location
-                        0,                                 # threshold cutoff KDE value
-                        0,                                 # left peak max KDE value
-                        np.exp(log_dens[right_max])                # right peak max KDE value
+                zero_left_max = 0
+                return (default_low_thresh,                  # threshold cutoff 
+                        zero_left_max,                       # left peak max location 
+                        10**x[right_max][0],                 # right peak max location
+                        np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
+                        np.exp(log_dens[zero_left_max]),     # left peak max KDE value
+                        np.exp(log_dens[right_max])          # right peak max KDE value
                 )
 
 ######
@@ -222,6 +224,11 @@ def is_normalization_unreliable(nVBC, clone_total_reads, thresholds, thresholds_
     min_peak_distance = 2  # Minimum fold distance between threshold and 2nd peak
     min_peak_height_diff = 2  # Minimum KDE fold height difference between threshold and 2nd peak
     
+    # Check that none of the measured variables are NA
+    if np.isnan(vbc_thresh) or np.isnan(vbc_thresh_kde_value) or np.isnan(vbc_peak) or np.isnan(vbc_peak_kde_values):
+        print(f"WARNING: NaN value for either threshold or right max peak.")
+        unreliable_norm_flag = True
+
     # Check that the number of data points approximating the VBC = nVBC normalization value is sufficient
     num_above_thresh = (vbc_reads > vbc_thresh).sum()
     if num_above_thresh < min_vbc_points:
@@ -366,9 +373,9 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     with open(maximas_file, "a") as f:
         for barcode_count in range(1, n_barcodes + 1):
             # write in csv: thresholds, left max right max
-            #f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\t{thresholds_kde_values[barcode_count]}\t{left_maxes_kde_values[barcode_count]}\t{right_maxes_kde_values[barcode_count]}\n")
+            f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\t{thresholds_kde_values[barcode_count]}\t{left_maxes_kde_values[barcode_count]}\t{right_maxes_kde_values[barcode_count]}\n")
             # write in csv: thresholds, left max, right max, threshold density, left max density, right max density
-            f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
+            #f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
     
     # Plot histograms and KDEs for clones
     histogram_file = os.path.join(directory, f"{sample_name}.histograms.pdf")
