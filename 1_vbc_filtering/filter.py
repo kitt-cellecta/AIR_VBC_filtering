@@ -84,9 +84,18 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
 ######
 
 def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.05):
-    """Finds threshold using KDE minima detection between two highest maxima."""    
+    """Finds threshold using KDE minima detection between two highest maxima."""
+
+    # Function return format: (threshold cutoff, left peak max, right peak max, threshold cutoff kde value)
+             
     if len(data) < 10:
-        return (default_low_thresh, 0, 0)
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
+        )
     
     data_array = np.log10(data[data > 0].values).reshape(-1, 1)
     
@@ -96,7 +105,13 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
     sigma = np.std(data_array, ddof=1)
     bandwidth = 1.06 * sigma * (n ** (-1/5))
     if bandwidth == 0 or np.isnan(bandwidth):
-        return (default_low_thresh, 0, 0)
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
+        )
     
     # Perform KDE analysis
     kde = KernelDensity(bandwidth=bandwidth)
@@ -110,7 +125,13 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
         
     # Check if we have at least two maxima
     if len(maxima) == 0:
-        return (default_low_thresh, 0, 0)
+        return (default_low_thresh,            # threshold cutoff
+                float('nan'),                  # left peak max location
+                float('nan'),                  # right peak max location
+                float('nan'),                  # threshold cutoff KDE value
+                float('nan'),                  # left peak max KDE value
+                float('nan')                   # right peak max KDE value
+        )
     
     if len(maxima) == 1:
         left_max = 0 # setting the first peak as non-existent at 0
@@ -121,10 +142,23 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
         if between_minima.size > 0:
             # Select the most prominent minimum (lowest log density)
             selected_min = between_minima[np.argmin(log_dens[between_minima])]
-            return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
+            return (10**x[selected_min][0],            # threshold cutoff 
+                    10**x[left_max][0],                # left peak max location 
+                    10**x[right_max][0],               # right peak max location
+                    np.exp(log_dens[selected_min]),    # threshold cutoff KDE value 
+                    np.exp(log_dens[left_max]),        # left peak max KDE value
+                    np.exp(log_dens[right_max])        # right peak max KDE value
+            )
         
+        # unlikely case because there's a maxima (so there has to be a low point)
         if between_minima.size == 0:
-            return (default_low_thresh, 0, 10**x[right_max][0])
+            return (default_low_thresh,                  # threshold cutoff 
+                    10**x[left_max][0],                  # left peak max location 
+                    10**x[right_max][0],                 # right peak max location
+                    np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
+                    np.exp(log_dens[left_max]),          # left peak max KDE value
+                    np.exp(log_dens[right_max])          # right peak max KDE value
+            )
             
     if len(maxima) >= 2:
         # Get two highest maxima (by log density)
@@ -144,13 +178,69 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
             right_peak = log_dens[right_max]
 
             # Calculate relative depth of valley compared to smaller peak
-            peak_max = min(left_peak, right_peak)
-            relative_depth = abs((peak_max - min_log_dens)/peak_max)
+            peak_max_lower = min(left_peak, right_peak)
+            relative_depth = abs((peak_max_lower - min_log_dens)/peak_max_lower)
             if relative_depth >= min_valley_depth:
-                return (10**x[selected_min][0], 10**x[left_max][0], 10**x[right_max][0])
+                return (10**x[selected_min][0],            # threshold cutoff 
+                        10**x[left_max][0],                # left peak max location 
+                        10**x[right_max][0],               # right peak max location
+                        np.exp(log_dens[selected_min]),    # threshold cutoff KDE value
+                        np.exp(log_dens[left_max]),        # left peak max KDE value
+                        np.exp(log_dens[right_max])        # right peak max KDE value
+                )
             else:
                 # Valley is too shallow, consider as one peak
-                return (default_low_thresh, 0, 10**x[right_max][0])
+                zero_left_max = 0
+                return (default_low_thresh,                  # threshold cutoff 
+                        zero_left_max,                       # left peak max location 
+                        10**x[right_max][0],                 # right peak max location
+                        np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
+                        np.exp(log_dens[zero_left_max]),     # left peak max KDE value
+                        np.exp(log_dens[right_max])          # right peak max KDE value
+                )
+
+######
+### is_normalization_reliable -- check reliability of normalization threshold for a VBC bin
+###    helper function for reads_per_clonotype_filter
+######
+
+def is_normalization_unreliable(nVBC, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values):
+    """
+    Checks if normalization threshold for a VBC bin is reliable.
+    Returns True if reliable, False otherwise.
+    """
+    unreliable_norm_flag = False
+    print(f"Checking reliability of normalization for VBC = {nVBC}...")
+
+    # VBC = nVBC Statistics
+    vbc_reads = clone_total_reads[clone_total_reads['barcode_count'] == nVBC]['readCount']
+    vbc_thresh = thresholds.get(nVBC, None)
+    vbc_thresh_kde_value = thresholds_kde_values.get(nVBC, None)
+    vbc_peak = right_maxes.get(nVBC, None)
+    vbc_peak_kde_values = right_maxes_kde_values.get(nVBC, None)
+    
+    # Thresholding cutoffs
+    min_vbc_points = 10  # Minimum required data points for VBC = nVBC
+    min_peak_distance = 2  # Minimum fold distance between threshold and 2nd peak
+    min_peak_height_diff = 2  # Minimum KDE fold height difference between threshold and 2nd peak
+    
+    # Check that none of the measured variables are NA
+    if np.isnan(vbc_thresh) or np.isnan(vbc_thresh_kde_value) or np.isnan(vbc_peak) or np.isnan(vbc_peak_kde_values):
+        print(f"WARNING: NaN value for either threshold or right max peak.")
+        unreliable_norm_flag = True
+
+    # Check that the number of data points approximating the VBC = nVBC normalization value is sufficient
+    num_above_thresh = (vbc_reads > vbc_thresh).sum()
+    if num_above_thresh < min_vbc_points:
+        print(f"WARNING: Too few data points in VBC bin passing threshold. Normalization may be unreliable.")
+        unreliable_norm_flag = True
+    
+    # Check that the second peak is sufficiently far from the threshold OR is sufficiently higher than the threshold
+    if vbc_thresh*min_peak_distance > vbc_peak or vbc_thresh_kde_value*min_peak_height_diff > vbc_peak_kde_values:
+        print(f"WARNING: Second peak and threshold value too close in VBC. Normalization may be unreliable.")
+        unreliable_norm_flag = True
+    
+    return unreliable_norm_flag
 
 ######
 ### reads_per_clonotype_filter -- filter clonotypes with low number of reads using VBC bins
@@ -176,14 +266,31 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
     clone_barcode_counts = df.groupby(group_cols)['tagValueMIBC'].nunique()
     clone_total_reads = df.groupby(group_cols)['readCount'].sum().reset_index()
     clone_total_reads['barcode_count'] = clone_total_reads.set_index(group_cols).index.map(clone_barcode_counts)
+    
+    #---------------------------------------------------------------------------------------------------#
+    #---------------------------------------------------------------------------------------------------#
 
-    # Perform KDE analysis
+    # KDE analysis:
+    
     thresholds = {}
     left_maxes = {}
     right_maxes = {}
+    thresholds_kde_values = {}
+    left_maxes_kde_values = {}
+    right_maxes_kde_values = {}  
     for barcode_count in range(1, n_barcodes + 1):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
-        thresholds[barcode_count], left_maxes[barcode_count], right_maxes[barcode_count] = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
+        (
+            thresholds[barcode_count],
+            left_maxes[barcode_count],
+            right_maxes[barcode_count],
+            thresholds_kde_values[barcode_count],
+            left_maxes_kde_values[barcode_count],
+            right_maxes_kde_values[barcode_count]
+        ) = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
+    
+    #---------------------------------------------------------------------------------------------------#
+    #---------------------------------------------------------------------------------------------------#
     
     # Threshold checks:
 
@@ -228,12 +335,47 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         # (2) Check if the thresholds are lower than the previous threshold
         if thresholds[current_key] < thresholds[previous_key]:
             thresholds[current_key] = thresholds[previous_key]
-            
+    
+    #---------------------------------------------------------------------------------------------------#
+    #---------------------------------------------------------------------------------------------------#
+
+    # Normalization value reliability checks:
+
+    # Checks to make sure that the VBC=1 normalization value is reliable. It checks as to 
+    # whether there are enough data points in the VBC=1 bin and whether the threshold and
+    # second peak are sufficiently separated.
+    
+    # Check reliability of VBC = 1 normalization, if reliable dont change normalization value. 
+    # If not, check VBC = 2 normalization reliability. If reliable, use VBC = 2 threshold for VBC = 1. 
+    # If not, check VBC = 3 normalization reliability. If reliable, use VBC = 3 threshold for VBC = 1.
+    # If not, set VBC = 1 normalization to NaN to prevent normalization. 
+
+    vbc1_unreliability = is_normalization_unreliable(1, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
+    if vbc1_unreliability == True:
+        print(f"WARNING: VBC=1 normalization may be unreliable.")
+        vbc2_unreliability = is_normalization_unreliable(2, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
+        if vbc2_unreliability == True:
+            print(f"WARNING: VBC=2 normalization may be unreliable.")
+            vbc3_unreliability = is_normalization_unreliable(3, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
+            if vbc3_unreliability == True:
+                print(f"WARNING: VBC=3 normalization may be unreliable.")      
+                right_maxes[1] = float('nan')
+            else:
+                right_maxes[1] = right_maxes[3]/3 # peak of VBC = 3 is 3x that of VBC = 1
+        else:
+            right_maxes[1] = right_maxes[2]/2 # peak of VBC = 2 is 2x that of VBC = 1
+    
+    #---------------------------------------------------------------------------------------------------#
+    #---------------------------------------------------------------------------------------------------#            
+    
     # Save maxima and threshold locations to a file
     maximas_file = os.path.join(directory, f"{sample_name}.kde.maximas.txt")
     with open(maximas_file, "a") as f:
         for barcode_count in range(1, n_barcodes + 1):
-            f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
+            # write in csv: thresholds, left max right max
+            f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\t{thresholds_kde_values[barcode_count]}\t{left_maxes_kde_values[barcode_count]}\t{right_maxes_kde_values[barcode_count]}\n")
+            # write in csv: thresholds, left max, right max, threshold density, left max density, right max density
+            #f.write(f"{barcode_count}\t{thresholds[barcode_count]}\t{left_maxes[barcode_count]}\t{right_maxes[barcode_count]}\n")
     
     # Plot histograms and KDEs for clones
     histogram_file = os.path.join(directory, f"{sample_name}.histograms.pdf")
@@ -247,7 +389,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             sns.histplot(subset['readCount'], bins=30, kde=True, ax=ax, log_scale=True)
 
             threshold = thresholds.get(barcode_count)
-            if threshold:
+            if threshold and not np.isnan(threshold):
                 ax.axvline(threshold, color='red', linestyle='dashed', linewidth=2)
                 ax.text(threshold, ax.get_ylim()[1] * 0.8, f'Threshold: {int(threshold)}',
                         color='red', ha='right', fontsize=10, weight='bold')
