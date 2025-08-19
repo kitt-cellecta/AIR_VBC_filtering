@@ -160,7 +160,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
                     np.exp(log_dens[right_max])          # right peak max KDE value
             )
             
-    if len(maxima) >= 2:
+    if len(maxima) == 2:
         # Get two highest maxima (by log density)
         sorted_maxima = maxima[np.argsort(-log_dens[maxima])]
         top_two_max = sorted_maxima[:2]
@@ -168,36 +168,64 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
                 
         # Find minima between these two maxima
         between_minima = minima[(minima > left_max) & (minima < right_max)]
-        if between_minima.size > 0:
-            # Select the most prominent minimum (lowest log density)
-            selected_min = between_minima[np.argmin(log_dens[between_minima])]
+        selected_min = between_minima[np.argmin(log_dens[between_minima])]
+    
+    elif len(maxima) > 2:
+        # Find the lowest minimum (by log density)
+        leftmost_max = np.min(maxima)
+        rightmost_max = np.max(maxima)
+        between_minima = minima[(minima > leftmost_max) & (minima < rightmost_max)]
+        
+        # For each candidate minimum, find the minima that provides best separation between left peaks and right peaks
+        best_score = None
+        best_min = None
+        for candidate_min in between_minima:
+            left_maximas = maxima[maxima < candidate_min]
+            right_maximas = maxima[maxima > candidate_min]
+            # Sum of squared distances to cluster means
+            left_mean = np.mean(left_maximas)
+            right_mean = np.mean(right_maximas)
+            left_ssd = np.sum((left_maximas - left_mean) ** 2)
+            right_ssd = np.sum((right_maximas - right_mean) ** 2)
+            total_ssd = left_ssd + right_ssd
+            # Select minimum total within-cluster sum of squares (similar to kmeans)
+            if (best_score is None) or (total_ssd < best_score):
+                best_score = total_ssd
+                best_min = candidate_min
+        
+        if best_min is not None:
+            selected_min = best_min
+            left_maximas = maxima[maxima < selected_min]
+            right_maximas = maxima[maxima > selected_min]
+            left_max = left_maximas[np.argmax(log_dens[left_maximas])]
+            right_max = right_maximas[np.argmax(log_dens[right_maximas])]           
             
-            # Check if the selected minimum is a valid valley
-            min_log_dens = log_dens[selected_min]
-            left_peak = log_dens[left_max]
-            right_peak = log_dens[right_max]
+    # Check if the selected minimum is a valid valley
+    min_log_dens = log_dens[selected_min]
+    left_peak = log_dens[left_max]
+    right_peak = log_dens[right_max]
 
-            # Calculate relative depth of valley compared to smaller peak
-            peak_max_lower = min(left_peak, right_peak)
-            relative_depth = abs((peak_max_lower - min_log_dens)/peak_max_lower)
-            if relative_depth >= min_valley_depth:
-                return (10**x[selected_min][0],            # threshold cutoff 
-                        10**x[left_max][0],                # left peak max location 
-                        10**x[right_max][0],               # right peak max location
-                        np.exp(log_dens[selected_min]),    # threshold cutoff KDE value
-                        np.exp(log_dens[left_max]),        # left peak max KDE value
-                        np.exp(log_dens[right_max])        # right peak max KDE value
-                )
-            else:
-                # Valley is too shallow, consider as one peak
-                zero_left_max = 0
-                return (default_low_thresh,                  # threshold cutoff 
-                        zero_left_max,                       # left peak max location 
-                        10**x[right_max][0],                 # right peak max location
-                        np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
-                        np.exp(log_dens[zero_left_max]),     # left peak max KDE value
-                        np.exp(log_dens[right_max])          # right peak max KDE value
-                )
+    # Calculate relative depth of valley compared to smaller peak
+    peak_max_lower = min(left_peak, right_peak)
+    relative_depth = abs((peak_max_lower - min_log_dens)/peak_max_lower)
+    if relative_depth >= min_valley_depth:
+        return (10**x[selected_min][0],            # threshold cutoff 
+                10**x[left_max][0],                # left peak max location 
+                10**x[right_max][0],               # right peak max location
+                np.exp(log_dens[selected_min]),    # threshold cutoff KDE value
+                np.exp(log_dens[left_max]),        # left peak max KDE value
+                np.exp(log_dens[right_max])        # right peak max KDE value
+        )
+    else:
+        # Valley is too shallow, consider as one peak
+        zero_left_max = 0
+        return (default_low_thresh,                  # threshold cutoff 
+                zero_left_max,                       # left peak max location 
+                10**x[right_max][0],                 # right peak max location
+                np.exp(log_dens[default_low_thresh]),# threshold cutoff KDE value
+                np.exp(log_dens[zero_left_max]),     # left peak max KDE value
+                np.exp(log_dens[right_max])          # right peak max KDE value
+        )
 
 ######
 ### is_normalization_reliable -- check reliability of normalization threshold for a VBC bin
