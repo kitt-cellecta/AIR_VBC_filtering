@@ -83,7 +83,7 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
 ###    helper function for reads_per_clonotype_filter
 ######
 
-def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.05):
+def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.10):
     """Finds threshold using KDE minima detection between two highest maxima."""
 
     # Function return format: (threshold cutoff, left peak max, right peak max, threshold cutoff kde value)
@@ -122,7 +122,7 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
     # Find local minima and maxima
     minima = argrelextrema(log_dens, np.less)[0]
     maxima = argrelextrema(log_dens, np.greater)[0]
-        
+
     # Check if we have at least two maxima
     if len(maxima) == 0:
         return (default_low_thresh,            # threshold cutoff
