@@ -1,6 +1,6 @@
 # Cellecta DriverMap AIR V2 - VBC Analysis <br />
 
-The two scripts below both use the validation barcodes (VBCs) in the Cellecta DriverMap AIR to (1) filter clonotypes based on read counts and (2) estimate the number of template molecules (DNA or RNA) in the sample. These two scripts are used sequentially and both operate directly on the MiXCR output folder. Template molecule estimation requires the results of the barcode hopping/VBC filtering steps.
+The two scripts below both use the validator barcodes (VBCs) in the Cellecta DriverMap AIR to (1) filter clonotypes based on read counts and (2) estimate the number of template molecules (DNA or RNA) in the sample. These two scripts are used sequentially and both operate directly on the MiXCR output folder. Template molecule estimation requires the results of the barcode hopping/VBC filtering steps.
 
 ---
 
