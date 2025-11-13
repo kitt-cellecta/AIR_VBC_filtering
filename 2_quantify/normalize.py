@@ -52,7 +52,7 @@ def quantify_templates(directory, sample_name, mode="bulk"):
                 df = df[df['templateEstimate'] != 0].copy()
                 normalizationFiltered = before_rows - len(df)
             else:
-                df['templateEstimate'] = float('nan')
+                df['templateEstimate'] = "NA"
             output_file = f"{sample_name}.clones_ALL.quantified.tsv"
             output_path = os.path.join(directory, output_file)
             df.to_csv(output_path, sep='\t', index=False)
