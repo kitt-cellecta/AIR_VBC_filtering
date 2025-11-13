@@ -339,13 +339,13 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         # (1) Check if the neighboring thresholds are much different from one another
         # check if previous threshold is 20x less than the current threshold (previousThresholdFoldx)
         if thresholds[current_key] is not default_low_thresh and thresholds[previous_key] is not default_low_thresh:
-            if thresholds[previous_key] > 10: # prevents threshold changes in cases where VBC = 1, 2 are much lower than the rest
+            if current_key > 3: # prevents threshold changes in cases where VBC = 1, 2 are much lower than the rest
                 previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
             else:
                 previousThresholdFoldx = False
         else: 
             previousThresholdFoldx = False
-
+        
         # check if next threshold is 10x more than the current threshold (nextThresholdFoldx)   
         if thresholds[current_key] is not default_low_thresh and current_key < len(sorted_keys):
             next_key = sorted_keys[i + 1]
@@ -355,7 +355,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
                 nextThresholdFoldx = False
         else:
             nextThresholdFoldx = False
-
+        
         # modify thresholds file if previousThresholdFoldx or nextThresholdFoldx is True
         if previousThresholdFoldx or nextThresholdFoldx: 
             thresholds[current_key] = thresholds[previous_key]					
