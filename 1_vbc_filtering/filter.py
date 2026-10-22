@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KernelDensity
-from scipy.signal import find_peaks, argrelextrema
+from scipy.signal import find_peaks, argrelextrema, peak_prominences
 from scipy.stats import iqr
 
 ######
@@ -83,8 +83,74 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
 ###    helper function for reads_per_clonotype_filter
 ######
 
-def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thresh, min_valley_depth=0.10):
-    """Finds threshold using KDE minima detection between two highest maxima."""
+def select_prominent_peak_pair(data_values, x, log_dens, minima, maxima):
+    """Select an adjacent, substantive KDE peak pair.
+
+    Peak prominence is evaluated locally on the KDE density.  Constituents are
+    counted in each peak's basin, bounded by the nearest surrounding minima.
+    The pair with the greatest combined basin support is selected; prominence
+    resolves ties.  This prevents a sparse far-right tail from being selected
+    merely because it forms a spatially convenient split.
+    """
+    density = np.exp(log_dens)
+    prominences = peak_prominences(density, maxima)[0]
+    prominence_by_peak = dict(zip(maxima, prominences))
+    values = np.asarray(data_values).reshape(-1)
+
+    def basin_support(peak):
+        left_minima = minima[minima < peak]
+        right_minima = minima[minima > peak]
+        lower_bound = -np.inf if left_minima.size == 0 else x[left_minima[-1]][0]
+        upper_bound = np.inf if right_minima.size == 0 else x[right_minima[0]][0]
+        return int(((values > lower_bound) & (values <= upper_bound)).sum())
+
+    candidates = []
+    for left_max, right_max in zip(maxima[:-1], maxima[1:]):
+        between_minima = minima[(minima > left_max) & (minima < right_max)]
+        if between_minima.size == 0:
+            continue
+
+        selected_min = between_minima[np.argmin(log_dens[between_minima])]
+        left_support = basin_support(left_max)
+        right_support = basin_support(right_max)
+        left_prominence = prominence_by_peak[left_max]
+        right_prominence = prominence_by_peak[right_max]
+
+        candidates.append((
+            left_support * right_support,
+            min(left_prominence, right_prominence),
+            left_prominence + right_prominence,
+            left_max,
+            right_max,
+            selected_min,
+        ))
+
+    if not candidates:
+        return None
+
+    # Maximize constituent support first, then favor the pair whose weaker
+    # peak is more locally prominent.
+    _, _, _, left_max, right_max, selected_min = max(
+        candidates,
+        key=lambda candidate: candidate[:3],
+    )
+    return left_max, right_max, selected_min
+
+
+def find_kde_mimima_threshold(
+    data,
+    barcode_count,
+    sample_name,
+    default_low_thresh,
+    min_valley_depth=0.10,
+    peak_selection="by_distance",
+):
+    """Find a KDE threshold using the requested peak-selection strategy."""
+
+    if peak_selection not in {"by_distance", "by_prominence"}:
+        raise ValueError(
+            "peak_selection must be 'by_distance' or 'by_prominence'"
+        )
 
     # Function return format: (threshold cutoff, left peak max, right peak max, threshold cutoff kde value)
              
@@ -171,34 +237,50 @@ def find_kde_mimima_threshold(data, barcode_count, sample_name, default_low_thre
         selected_min = between_minima[np.argmin(log_dens[between_minima])]
     
     elif len(maxima) > 2:
-        # Find the lowest minimum (by log density)
-        leftmost_max = np.min(maxima)
-        rightmost_max = np.max(maxima)
-        between_minima = minima[(minima > leftmost_max) & (minima < rightmost_max)]
-        
-        # For each candidate minimum, find the minima that provides best separation between left peaks and right peaks
-        best_score = None
-        best_min = None
-        for candidate_min in between_minima:
-            left_maximas = maxima[maxima < candidate_min]
-            right_maximas = maxima[maxima > candidate_min]
-            # Sum of squared distances to cluster means
-            left_mean = np.mean(left_maximas)
-            right_mean = np.mean(right_maximas)
-            left_ssd = np.sum((left_maximas - left_mean) ** 2)
-            right_ssd = np.sum((right_maximas - right_mean) ** 2)
-            total_ssd = left_ssd + right_ssd
-            # Select minimum total within-cluster sum of squares (similar to kmeans)
-            if (best_score is None) or (total_ssd < best_score):
-                best_score = total_ssd
-                best_min = candidate_min
-        
-        if best_min is not None:
-            selected_min = best_min
-            left_maximas = maxima[maxima < selected_min]
-            right_maximas = maxima[maxima > selected_min]
-            left_max = left_maximas[np.argmax(log_dens[left_maximas])]
-            right_max = right_maximas[np.argmax(log_dens[right_maximas])]           
+        if peak_selection == "by_distance":
+            # Original selection behavior: choose the position-based split
+            # with the lowest within-side variance of all detected maxima.
+            leftmost_max = np.min(maxima)
+            rightmost_max = np.max(maxima)
+            between_minima = minima[(minima > leftmost_max) & (minima < rightmost_max)]
+
+            best_score = None
+            best_min = None
+            for candidate_min in between_minima:
+                left_maximas = maxima[maxima < candidate_min]
+                right_maximas = maxima[maxima > candidate_min]
+                left_mean = np.mean(left_maximas)
+                right_mean = np.mean(right_maximas)
+                left_ssd = np.sum((left_maximas - left_mean) ** 2)
+                right_ssd = np.sum((right_maximas - right_mean) ** 2)
+                total_ssd = left_ssd + right_ssd
+                if (best_score is None) or (total_ssd < best_score):
+                    best_score = total_ssd
+                    best_min = candidate_min
+
+            if best_min is not None:
+                selected_min = best_min
+                left_maximas = maxima[maxima < selected_min]
+                right_maximas = maxima[maxima > selected_min]
+                left_max = left_maximas[np.argmax(log_dens[left_maximas])]
+                right_max = right_maximas[np.argmax(log_dens[right_maximas])]
+        else:
+            prominent_pair = select_prominent_peak_pair(
+                data_array,
+                x,
+                log_dens,
+                minima,
+                maxima,
+            )
+            if prominent_pair is None:
+                return (default_low_thresh,
+                        float('nan'),
+                        float('nan'),
+                        float('nan'),
+                        float('nan'),
+                        float('nan'),
+                        float('nan'))
+            left_max, right_max, selected_min = prominent_pair
             
     # Check if the selected minimum is a valid valley
     min_log_dens = log_dens[selected_min]
@@ -279,9 +361,17 @@ def is_normalization_unreliable(nVBC, clone_total_reads, thresholds, thresholds_
 ###     output_file = clonotypes filtered by the number of reads
 ######
     
-def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_thresh, mode="bulk"):
+def reads_per_clonotype_filter(
+    input_file,
+    directory,
+    sample_name,
+    default_low_thresh,
+    mode="bulk",
+    peak_selection="by_distance",
+):
     
     print("Running VBC filtering...")
+    print(f"Peak selection strategy: {peak_selection}")
     
     df = input_file
     if mode == "single_cell":
@@ -315,7 +405,13 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             thresholds_kde_values[barcode_count],
             left_maxes_kde_values[barcode_count],
             right_maxes_kde_values[barcode_count]
-        ) = find_kde_mimima_threshold(subset, barcode_count, sample_name, default_low_thresh)
+        ) = find_kde_mimima_threshold(
+            subset,
+            barcode_count,
+            sample_name,
+            default_low_thresh,
+            peak_selection=peak_selection,
+        )
     
     #---------------------------------------------------------------------------------------------------#
     #---------------------------------------------------------------------------------------------------#
@@ -338,7 +434,7 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
         
         # (1) Check if the neighboring thresholds are much different from one another
         # check if previous threshold is 20x less than the current threshold (previousThresholdFoldx)
-        if thresholds[current_key] is not default_low_thresh and thresholds[previous_key] is not default_low_thresh:
+        if thresholds[current_key] != default_low_thresh and thresholds[previous_key] != default_low_thresh:
             if current_key > 3: # prevents threshold changes in cases where VBC = 1, 2 are much lower than the rest
                 previousThresholdFoldx = thresholds[current_key] > 20 * thresholds[previous_key]
             else:
@@ -347,9 +443,9 @@ def reads_per_clonotype_filter(input_file, directory, sample_name, default_low_t
             previousThresholdFoldx = False
         
         # check if next threshold is 10x more than the current threshold (nextThresholdFoldx)   
-        if thresholds[current_key] is not default_low_thresh and current_key < len(sorted_keys):
+        if thresholds[current_key] != default_low_thresh and current_key < len(sorted_keys):
             next_key = sorted_keys[i + 1]
-            if thresholds[next_key] is not default_low_thresh:
+            if thresholds[next_key] != default_low_thresh:
                 nextThresholdFoldx = thresholds[next_key] > 20 * thresholds[current_key]
             else:
                 nextThresholdFoldx = False
@@ -550,7 +646,7 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"
 ###     df_passing_clonotypes = simplified df post-barcode hopping and reads per clonotype filters
 ######
     
-def main(input_file, directory, sample_name, mode="bulk"):
+def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_distance"):
     """
     Step 1: barcode_hopping_filter -- filter barcode hopping 
     Step 2: reads_per_clonotype_filter -- filter low read count clonotypes
@@ -577,7 +673,14 @@ def main(input_file, directory, sample_name, mode="bulk"):
         
         # Run VBC filtering steps if data quality is good
         df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage, mode=mode)
-        df_rpclon_filtered = reads_per_clonotype_filter(df_bcHop_filtered, directory, sample_name, default_low_thresh, mode=mode)
+        df_rpclon_filtered = reads_per_clonotype_filter(
+            df_bcHop_filtered,
+            directory,
+            sample_name,
+            default_low_thresh,
+            mode=mode,
+            peak_selection=peak_selection,
+        )
         df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode=mode)
     
         df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
@@ -595,5 +698,20 @@ if __name__ == "__main__":
     parser.add_argument("directory", type=str, help="Directory of MiXCR output files")
     parser.add_argument("sample_name", type=str, help="Prefix for output files.")
     parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
+    parser.add_argument(
+        "--peak-selection",
+        choices=["by_distance", "by_prominence"],
+        default="by_distance",
+        help=(
+            "Strategy for KDE distributions with more than two peaks "
+            "(default: by_distance, the original behavior)."
+        ),
+    )
     args = parser.parse_args()
-    main(args.input_file, args.directory, args.sample_name, mode=args.mode)
+    main(
+        args.input_file,
+        args.directory,
+        args.sample_name,
+        mode=args.mode,
+        peak_selection=args.peak_selection,
+    )

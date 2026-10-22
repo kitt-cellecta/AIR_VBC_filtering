@@ -32,10 +32,20 @@ def main():
     parser.add_argument('dir', help='Input directory containing initial data files')
     parser.add_argument('sample', help='Sample name prefix for output files')
     parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell'], default='bulk', help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
+    parser.add_argument(
+        '--peak-selection',
+        choices=['by_distance', 'by_prominence'],
+        default='by_distance',
+        help=(
+            "Strategy for KDE distributions with more than two peaks "
+            "(default: by_distance, the original behavior)."
+        ),
+    )
     args = parser.parse_args()
     sample_name = args.sample
     directory = args.dir
     mode = args.mode
+    peak_selection = args.peak_selection
     if not directory.endswith(os.path.sep):
         directory += os.path.sep
     run_filter_dir = os.path.dirname(os.path.abspath(__file__))
@@ -62,6 +72,7 @@ def main():
             filter_cmd = ["python3", py2_filtering, output_all, directory, sample_name]
             if mode:
                 filter_cmd += ["--mode", mode]
+            filter_cmd += ["--peak-selection", peak_selection]
             run_subprocess(
                 filter_cmd,
                 report_file
