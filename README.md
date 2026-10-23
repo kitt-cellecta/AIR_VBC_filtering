@@ -13,7 +13,7 @@ python3 run_filter_vbc.py $DIRECTORY $SAMPLE_NAME --mode $MODE --peak-selection 
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk' or 'single_cell' (Default: 'bulk') <br />
-&nbsp;&nbsp;&nbsp;&nbsp; - PEAK_SELECTION = `by_distance` or `by_prominence` for KDE distributions with more than two peaks (Default: `by_distance`, which reproduces the original pipeline behavior) <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - PEAK_SELECTION = `by_distance`, `by_prominence`, or `manual` (Default: `by_distance`, which reproduces the original pipeline behavior) <br />
 e.g.
 ```bash
 python3 run_filter_vbc.py ~/Desktop/test_T/ test_T --mode bulk --peak-selection by_distance
@@ -24,6 +24,16 @@ the strongest combination of local KDE prominence and clonotype constituent
 support. It avoids selecting a sparse far-right tail simply because it creates
 a favorable position-based split. The existing valley-depth check is applied
 after either strategy selects a peak pair.
+
+### Manual valley selection
+
+After a completed automatic run, the sample directory contains
+`peak_manual_select.csv`, with eight VBC rows. Set active rows to `keep` or a
+labelled KDE valley such as `valley_2`, then rerun with
+`--peak-selection manual`. The manual run reads the original completed-run
+manifest, archives automatic VBC output under `original_vbc_analysis/`, and
+uses selected valleys as final filters without applying a second round of
+post-selection threshold adjustments. In 4-VBC modes, rows 5–8 are ignored.
 
 ---
 

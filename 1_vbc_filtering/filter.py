@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import csv
+import json
 import pandas as pd
 import os
 import sys
@@ -10,6 +12,88 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import KernelDensity
 from scipy.signal import find_peaks, argrelextrema, peak_prominences
 from scipy.stats import iqr
+
+
+MANUAL_TEMPLATE_NAME = "peak_manual_select.csv"
+MANIFEST_SUFFIX = ".vbc_analysis.manifest.json"
+
+
+def mode_details(mode):
+    if mode == "single_cell":
+        return ["cloneId", "tagValueMIWELLNAME"], 4
+    if mode == "bead":
+        return ["cloneId", "chain", "BeadBC"], 4
+    return ["cloneId"], 8
+
+
+def manifest_path(directory, sample_name):
+    return os.path.join(directory, f"{sample_name}{MANIFEST_SUFFIX}")
+
+
+def template_path(directory):
+    return os.path.join(directory, MANUAL_TEMPLATE_NAME)
+
+
+def write_manual_template(directory):
+    path = template_path(directory)
+    if os.path.exists(path):
+        print(f"Manual selection template retained: {path}")
+        return path
+    with open(path, "w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["vbc_bin", "filter_choice"])
+        writer.writerows((barcode_count, "keep") for barcode_count in range(1, 9))
+    print(f"Manual selection template created: {path}")
+    return path
+
+
+def load_manual_choices(directory, n_barcodes):
+    path = template_path(directory)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Manual selection template not found: {path}")
+    with open(path, newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    expected = set(range(1, 9))
+    choices = {}
+    for row in rows:
+        try:
+            barcode_count = int(row["vbc_bin"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("Template requires integer 'vbc_bin' values.") from error
+        choice = row.get("filter_choice", "").strip()
+        if barcode_count in choices:
+            raise ValueError(f"Template contains VBC {barcode_count} more than once.")
+        choices[barcode_count] = choice
+    if set(choices) != expected:
+        raise ValueError("Template must contain exactly one row for each VBC bin 1 through 8.")
+    if n_barcodes == 4:
+        print("Manual mode: VBC bins 5-8 are ignored in this 4-VBC mode.")
+    active_choices = {key: choices[key] for key in range(1, n_barcodes + 1)}
+    for barcode_count, choice in active_choices.items():
+        if choice == "keep":
+            continue
+        if not choice.startswith("valley_") or not choice.removeprefix("valley_").isdigit():
+            raise ValueError(
+                f"VBC {barcode_count} has invalid filter_choice '{choice}'; use keep or valley_N."
+            )
+    return choices, active_choices
+
+
+def load_completed_manifest(directory, sample_name):
+    candidates = [
+        manifest_path(directory, sample_name),
+        os.path.join(directory, "original_vbc_analysis", f"{sample_name}{MANIFEST_SUFFIX}"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path) as handle:
+                manifest = json.load(handle)
+            if manifest.get("status") != "completed":
+                raise ValueError(f"Original VBC analysis is not completed: {path}")
+            return manifest, path
+    raise FileNotFoundError(
+        "Manual mode requires a completed automatic VBC analysis manifest."
+    )
 
 ######
 ### qc_mixcr_output -- check quality of MiXCR output
@@ -48,10 +132,7 @@ def barcode_hopping_filter(input_file, percentage, mode="bulk"):
     
     # Read TSV file
     df = pd.read_csv(input_file, sep='\t', low_memory=False)
-    if mode == "single_cell":
-        group_cols = ['cloneId', 'tagValueMIWELLNAME']
-    else:
-        group_cols = ['cloneId']
+    group_cols, _ = mode_details(mode)
     # Calculate maximum read count per cloneId/tagValueMIWELLNAME group
     df['group_max'] = df.groupby(group_cols)['readCount'].transform('max')
     
@@ -309,6 +390,21 @@ def find_kde_mimima_threshold(
                 np.exp(log_dens[right_max])          # right peak max KDE value
         )
 
+
+def find_kde_valleys(data):
+    """Return all raw KDE minima as left-to-right manual candidate valleys."""
+    if len(data) < 10:
+        return []
+    data_array = np.log10(data[data > 0].values).reshape(-1, 1)
+    sigma = np.std(data_array, ddof=1)
+    bandwidth = 1.06 * sigma * (len(data_array) ** (-1 / 5))
+    if bandwidth == 0 or np.isnan(bandwidth):
+        return []
+    x = np.linspace(data_array.min(), data_array.max(), 1000).reshape(-1, 1)
+    log_dens = KernelDensity(bandwidth=bandwidth).fit(data_array).score_samples(x)
+    minima = argrelextrema(log_dens, np.less)[0]
+    return [float(10 ** x[index][0]) for index in minima]
+
 ######
 ### is_normalization_reliable -- check reliability of normalization threshold for a VBC bin
 ###    helper function for reads_per_clonotype_filter
@@ -371,15 +467,27 @@ def reads_per_clonotype_filter(
 ):
     
     print("Running VBC filtering...")
-    print(f"Peak selection strategy: {peak_selection}")
+    is_manual = peak_selection == "manual"
+    original_manifest = None
+    manual_choices = None
+    if is_manual:
+        original_manifest, original_manifest_file = load_completed_manifest(directory, sample_name)
+        if original_manifest.get("mode") != mode:
+            raise ValueError(
+                f"Manual mode expects original mode {original_manifest.get('mode')!r}, not {mode!r}."
+            )
+        selection_strategy = original_manifest.get("peak_selection")
+        if selection_strategy not in {"by_distance", "by_prominence"}:
+            raise ValueError("Original manifest does not contain a supported peak-selection strategy.")
+        print(f"Manual mode uses original peak-selection strategy: {selection_strategy}")
+    else:
+        selection_strategy = peak_selection
+        print(f"Peak selection strategy: {selection_strategy}")
     
     df = input_file
-    if mode == "single_cell":
-        group_cols = ['cloneId', 'tagValueMIWELLNAME']
-        n_barcodes = 4
-    else:
-        group_cols = ['cloneId']
-        n_barcodes = 8
+    group_cols, n_barcodes = mode_details(mode)
+    if is_manual:
+        _, manual_choices = load_manual_choices(directory, n_barcodes)
     # Calculate barcode counts and total reads per cloneId/tagValueMIWELLNAME
     clone_barcode_counts = df.groupby(group_cols)['tagValueMIBC'].nunique()
     clone_total_reads = df.groupby(group_cols)['readCount'].sum().reset_index()
@@ -396,8 +504,10 @@ def reads_per_clonotype_filter(
     thresholds_kde_values = {}
     left_maxes_kde_values = {}
     right_maxes_kde_values = {}  
+    candidate_valleys = {}
     for barcode_count in range(1, n_barcodes + 1):
         subset = clone_total_reads[clone_total_reads['barcode_count'] == barcode_count]['readCount']
+        candidate_valleys[barcode_count] = find_kde_valleys(subset)
         (
             thresholds[barcode_count],
             left_maxes[barcode_count],
@@ -410,7 +520,7 @@ def reads_per_clonotype_filter(
             barcode_count,
             sample_name,
             default_low_thresh,
-            peak_selection=peak_selection,
+            peak_selection=selection_strategy,
         )
     
     #---------------------------------------------------------------------------------------------------#
@@ -459,6 +569,30 @@ def reads_per_clonotype_filter(
         # (2) Check if the thresholds are lower than the previous threshold
         if thresholds[current_key] < thresholds[previous_key]:
             thresholds[current_key] = thresholds[previous_key]
+
+    automatic_thresholds = thresholds.copy()
+    threshold_sources = {barcode_count: "automatic" for barcode_count in thresholds}
+    if is_manual:
+        original_thresholds = original_manifest.get("final_thresholds", {})
+        for barcode_count, choice in manual_choices.items():
+            if choice == "keep":
+                try:
+                    thresholds[barcode_count] = float(original_thresholds[str(barcode_count)])
+                except (KeyError, TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"Original manifest is missing final threshold for VBC {barcode_count}."
+                    ) from error
+                threshold_sources[barcode_count] = "original_keep"
+                continue
+            valley_number = int(choice.removeprefix("valley_"))
+            valleys = candidate_valleys[barcode_count]
+            if valley_number < 1 or valley_number > len(valleys):
+                raise ValueError(
+                    f"VBC {barcode_count} requests {choice}, but only {len(valleys)} valleys were detected."
+                )
+            thresholds[barcode_count] = valleys[valley_number - 1]
+            threshold_sources[barcode_count] = choice
+            print(f"Manual VBC {barcode_count}: {choice} = {thresholds[barcode_count]:.2f}")
     
     #---------------------------------------------------------------------------------------------------#
     #---------------------------------------------------------------------------------------------------#
@@ -474,8 +608,10 @@ def reads_per_clonotype_filter(
     # If not, check VBC = 3 normalization reliability. If reliable, use VBC = 3 threshold for VBC = 1.
     # If not, set VBC = 1 normalization to NaN to prevent normalization. 
 
-    vbc1_unreliability = is_normalization_unreliable(1, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
-    if vbc1_unreliability == True:
+    vbc1_unreliability = False
+    if not is_manual:
+        vbc1_unreliability = is_normalization_unreliable(1, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
+    if not is_manual and vbc1_unreliability == True:
         print(f"WARNING: VBC=1 normalization may be unreliable.")
         vbc2_unreliability = is_normalization_unreliable(2, clone_total_reads, thresholds, thresholds_kde_values, right_maxes, right_maxes_kde_values)
         if vbc2_unreliability == True:
@@ -512,6 +648,10 @@ def reads_per_clonotype_filter(
             ax = axes[i]
             sns.histplot(subset['readCount'], bins=30, kde=True, ax=ax, log_scale=True)
 
+            for valley_number, valley in enumerate(candidate_valleys[barcode_count], start=1):
+                ax.axvline(valley, color="#555555", linestyle=":", linewidth=1, alpha=0.65)
+                ax.text(valley, ax.get_ylim()[1] * 0.92, f"valley_{valley_number}",
+                        color="#555555", rotation=90, ha="right", va="top", fontsize=7)
             threshold = thresholds.get(barcode_count)
             if threshold and not np.isnan(threshold):
                 ax.axvline(threshold, color='red', linestyle='dashed', linewidth=2)
@@ -555,7 +695,14 @@ def reads_per_clonotype_filter(
           f"({(original_rows_readSum - filtered_rows_readSum)/original_rows_readSum:.1%})")
     print()
 
-    return grouped_final_data
+    return grouped_final_data, {
+        "final_thresholds": thresholds,
+        "automatic_thresholds": automatic_thresholds,
+        "threshold_sources": threshold_sources,
+        "candidate_valleys": candidate_valleys,
+        "selection_strategy": selection_strategy,
+        "manual": is_manual,
+    }
 
 ######
 ### simplify_clonotypes_table -- simplifies clonotype table by creating one row for each clonotype and extra columns for each VBC count;
@@ -568,10 +715,7 @@ def simplify_clonotypes_table(df_filtered, mode="bulk"):
     This reduces the number of rows on the table
     Then it creates a new column for the total read counts called readCount
     """
-    if mode == "single_cell":
-        index_cols = ['cloneId', 'tagValueMIWELLNAME']
-    else:
-        index_cols = ['cloneId']
+    index_cols, _ = mode_details(mode)
     # Create simplified table for readCount values, set value to 0 if the BC does not have a particular clonotype
     df_pivot = df_filtered.pivot_table(
         index=index_cols,
@@ -626,6 +770,13 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"
         df_filtered = df_bcHop_filtered[
             df_bcHop_filtered[key_cols].apply(tuple, axis=1).isin(keys)
         ]
+    elif mode == "bead":
+        key_cols = ["targetSequences", "chain", "BeadBC"]
+        df_rpclon_filtered = df_rpclon_filtered.dropna(subset=key_cols)
+        keys = set(tuple(x) for x in df_rpclon_filtered[key_cols].values)
+        df_filtered = df_bcHop_filtered[
+            df_bcHop_filtered[key_cols].apply(tuple, axis=1).isin(keys)
+        ]
     else:
         # Bulk mode: filter by targetSequences only
         unique_target_sequences = set(df_rpclon_filtered["targetSequences"].dropna())
@@ -646,6 +797,22 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"
 ###     df_passing_clonotypes = simplified df post-barcode hopping and reads per clonotype filters
 ######
     
+def write_analysis_manifest(directory, sample_name, mode, analysis):
+    payload = {
+        "status": "completed",
+        "mode": mode,
+        "peak_selection": analysis["selection_strategy"],
+        "manual": analysis["manual"],
+        "final_thresholds": {str(key): value for key, value in analysis["final_thresholds"].items()},
+        "automatic_thresholds": {str(key): value for key, value in analysis["automatic_thresholds"].items()},
+        "threshold_sources": {str(key): value for key, value in analysis["threshold_sources"].items()},
+        "candidate_valleys": {str(key): value for key, value in analysis["candidate_valleys"].items()},
+    }
+    with open(manifest_path(directory, sample_name), "w") as handle:
+        json.dump(payload, handle, indent=2)
+    print(f"VBC analysis manifest written: {manifest_path(directory, sample_name)}")
+
+
 def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_distance"):
     """
     Step 1: barcode_hopping_filter -- filter barcode hopping 
@@ -673,7 +840,7 @@ def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_dis
         
         # Run VBC filtering steps if data quality is good
         df_bcHop_filtered = barcode_hopping_filter(mixcr_clones_file, percentage, mode=mode)
-        df_rpclon_filtered = reads_per_clonotype_filter(
+        df_rpclon_filtered, analysis = reads_per_clonotype_filter(
             df_bcHop_filtered,
             directory,
             sample_name,
@@ -685,6 +852,9 @@ def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_dis
     
         df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
         df_passing_clonotypes.to_csv(output_path, sep="\t", index=False)
+        if peak_selection != "manual":
+            write_manual_template(directory)
+        write_analysis_manifest(directory, sample_name, mode, analysis)
     
     else:
         
@@ -697,14 +867,14 @@ if __name__ == "__main__":
     parser.add_argument("input_file", type=str, help="Path to input TSV file.")
     parser.add_argument("directory", type=str, help="Directory of MiXCR output files")
     parser.add_argument("sample_name", type=str, help="Prefix for output files.")
-    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell", "bead"], default="bulk", help="Processing mode: 'bulk', 'single_cell', or 'bead'.")
     parser.add_argument(
         "--peak-selection",
-        choices=["by_distance", "by_prominence"],
+        choices=["by_distance", "by_prominence", "manual"],
         default="by_distance",
         help=(
-            "Strategy for KDE distributions with more than two peaks "
-            "(default: by_distance, the original behavior)."
+            "Strategy for KDE distributions with more than two peaks, or manual "
+            "selection from peak_manual_select.csv (default: by_distance)."
         ),
     )
     args = parser.parse_args()
