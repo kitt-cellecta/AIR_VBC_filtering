@@ -117,9 +117,12 @@ post-selection threshold adjustments.
 1. Run filtering once with `by_distance` or `by_prominence`; this also creates
    the optional `peak_manual_select.csv` worksheet. Review the histogram PDF.
 2. Edit `peak_manual_select.csv` in that sample directory. It contains VBC
-   bins 1–8 and accepts `keep` or a labelled valley such as `valley_2` in the
-   `filter_choice` column. `keep` preserves the exact threshold from the
-   original automatic run.
+   bins 1–8 and accepts `keep`, a labelled valley such as `valley_2`, or an
+   explicit read-count threshold such as `reads_150` in the `filter_choice`
+   column. `keep` preserves the exact threshold from the original automatic
+   run. The `reads_` prefix is required: a bare number such as `2` is rejected
+   so it cannot be confused with `valley_2`. The numeric value after `reads_`
+   must be positive and finite; decimal values are allowed.
 3. Rerun the complete workflow with `manual`:
 
    ```bash
@@ -141,7 +144,8 @@ table for comparison.
 
 The example below is tcr_seq_sample_A, VBC bin 4. The original automatic
 threshold (`53`) is too far left, whereas the intended filter is the labelled
-valley at `150`. The manual worksheet changes that row to `valley_1`.
+valley at `150`. The manual worksheet changes that row to `valley_1`. To use
+an exact threshold instead, enter `reads_150`.
 
 | Incorrect automatic selection | Correct post-manual selection |
 | --- | --- |

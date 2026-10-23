@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import math
 import pandas as pd
 import os
 import sys
@@ -47,6 +48,26 @@ def write_manual_template(directory):
     return path
 
 
+def parse_manual_reads_threshold(choice, barcode_count):
+    """Return an explicit manual read threshold, or ``None`` for another choice."""
+    if not choice.startswith("reads_"):
+        return None
+    value_text = choice.removeprefix("reads_")
+    try:
+        threshold = float(value_text)
+    except ValueError as error:
+        raise ValueError(
+            f"VBC {barcode_count} has invalid filter_choice {choice!r}; "
+            "reads_N requires a positive numeric N."
+        ) from error
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise ValueError(
+            f"VBC {barcode_count} has invalid filter_choice {choice!r}; "
+            "reads_N requires a positive finite N."
+        )
+    return threshold
+
+
 def load_manual_choices(directory, n_barcodes):
     path = template_path(directory)
     if not os.path.isfile(path):
@@ -72,9 +93,13 @@ def load_manual_choices(directory, n_barcodes):
     for barcode_count, choice in active_choices.items():
         if choice == "keep":
             continue
+        if choice.startswith("reads_"):
+            parse_manual_reads_threshold(choice, barcode_count)
+            continue
         if not choice.startswith("valley_") or not choice.removeprefix("valley_").isdigit():
             raise ValueError(
-                f"VBC {barcode_count} has invalid filter_choice '{choice}'; use keep or valley_N."
+                f"VBC {barcode_count} has invalid filter_choice '{choice}'; "
+                "use keep, valley_N, or reads_N."
             )
     return choices, active_choices
 
@@ -585,6 +610,12 @@ def reads_per_clonotype_filter(
                         f"Original manifest is missing final threshold for VBC {barcode_count}."
                     ) from error
                 threshold_sources[barcode_count] = "original_keep"
+                continue
+            reads_threshold = parse_manual_reads_threshold(choice, barcode_count)
+            if reads_threshold is not None:
+                thresholds[barcode_count] = reads_threshold
+                threshold_sources[barcode_count] = choice
+                print(f"Manual VBC {barcode_count}: {choice} = {thresholds[barcode_count]:.2f}")
                 continue
             valley_number = int(choice.removeprefix("valley_"))
             valleys = candidate_valleys[barcode_count]
