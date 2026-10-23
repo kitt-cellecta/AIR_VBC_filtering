@@ -4,6 +4,30 @@ The two scripts below both use the validator barcodes (VBCs) in the Cellecta Dri
 
 ---
 
+### Complete VBC pipeline
+
+Use the combined runner to perform filtering and then template-molecule
+quantification for one sample:
+
+```bash
+bash run_vbc_pipeline.sh $DIRECTORY $SAMPLE_NAME --mode $MODE --peak-selection $PEAK_SELECTION
+```
+
+For example:
+
+```bash
+bash run_vbc_pipeline.sh ~/Desktop/test_T/ test_T --mode bulk --peak-selection by_prominence
+```
+
+The runner accepts `bulk`, `single_cell`, and `bead` modes and the
+`by_distance`, `by_prominence`, and `manual` peak-selection modes. It stops if
+filtering fails. For a manual rerun that creates a new filtered table, it
+automatically refreshes template quantification instead of retaining an older
+quantification report. Set `PYTHON_BIN` if the pipeline requires a particular
+Python interpreter, for example `PYTHON_BIN=/path/to/python bash ...`.
+
+---
+
 ### Barcode Hopping and VBC filtering <br />
 
 ```bash
@@ -12,7 +36,7 @@ python3 run_filter_vbc.py $DIRECTORY $SAMPLE_NAME --mode $MODE --peak-selection 
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
-&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk' or 'single_cell' (Default: 'bulk') <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk', 'single_cell', or 'bead' (Default: 'bulk') <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - PEAK_SELECTION = `by_distance`, `by_prominence`, or `manual` (Default: `by_distance`, which reproduces the original pipeline behavior) <br />
 e.g.
 ```bash
@@ -40,12 +64,13 @@ post-selection threshold adjustments. In 4-VBC modes, rows 5–8 are ignored.
 ### Template Molecule Estimation
 
 ```bash
-python3 run_quantify.py $DIRECTORY $SAMPLE_NAME --mode $MODE
+python3 run_quantify.py $DIRECTORY $SAMPLE_NAME --mode $MODE [--force]
 ```
 &nbsp;&nbsp;&nbsp;&nbsp; where: <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - DIRECTORY = directory of mixcr folder containing clones tsv files <br />
 &nbsp;&nbsp;&nbsp;&nbsp; - SAMPLE_NAME = name of the current sample being analyzed (match with the MiXCR output prefix) <br />
-&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk' or 'single_cell' (Default: 'bulk') <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - MODE = 'bulk', 'single_cell', or 'bead' (Default: 'bulk') <br />
+&nbsp;&nbsp;&nbsp;&nbsp; - `--force` = regenerate template estimates when a prior template-estimation report exists <br />
 e.g.
 ```bash
 python3 run_quantify.py ~/Desktop/test_T/ test_T --mode bulk

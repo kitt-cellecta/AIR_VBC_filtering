@@ -19,7 +19,8 @@ def main():
     parser = argparse.ArgumentParser(description='Process clones files and filter low abundance clones')
     parser.add_argument('dir', help='Input directory containing initial data files')
     parser.add_argument('sample', help='Sample name prefix for output files')
-    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell'], default='bulk', help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
+    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell', 'bead'], default='bulk', help="Processing mode: 'bulk', 'single_cell', or 'bead' DriverMap AIR.")
+    parser.add_argument('--force', action='store_true', help='Recalculate even when a template-estimation report already exists.')
     args = parser.parse_args()
     sample_name = args.sample
     directory = args.dir
@@ -32,11 +33,19 @@ def main():
     try:
         quantification_output = os.path.join(directory, f"{sample_name}.clones_ALL.quantified.tsv")
         py1_quantify = os.path.join(run_filter_dir, "normalize.py")
-        quantify_cmd = ["python3", py1_quantify, directory, sample_name, "--mode", mode]
-        subprocess.run(quantify_cmd)
+        quantify_cmd = [sys.executable, py1_quantify, directory, sample_name, "--mode", mode]
+        if args.force:
+            quantify_cmd.append("--force")
+        subprocess.run(quantify_cmd, check=True)
         if not os.path.exists(quantification_output):
             sys.exit(f"Error: Failed to create {quantification_output}")
         df = pd.read_csv(quantification_output, sep='\t')
+        if 'chain' not in df.columns:
+            print(
+                "No chain column found; retaining the combined quantified "
+                f"table: {quantification_output}"
+            )
+            return
         chains = df['chain'].unique()
         for chain_value in chains:
             chain_df = df[df['chain'] == chain_value]

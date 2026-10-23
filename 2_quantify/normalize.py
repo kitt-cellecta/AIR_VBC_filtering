@@ -13,12 +13,12 @@ import numpy as np
 ###     $SAMPLE_NAME.clones_ALL.quantified.tsv - clonotype table with molecular estimates (all chains in single table)
 ######
 
-def quantify_templates(directory, sample_name, mode="bulk"):
+def quantify_templates(directory, sample_name, mode="bulk", force=False):
     
     # Check if the analysis has already been completed
     report_file = f"{sample_name}.templateEstimation.report.txt"
     report_path = os.path.join(directory, report_file)
-    if os.path.exists(report_path):
+    if os.path.exists(report_path) and not force:
         print(f"Template estimation for {sample_name} has already completed. Will not run again...")
         return
     
@@ -83,11 +83,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Quantify templates based on normFactor")
     parser.add_argument("directory", help="Directory containing the sample_name files")
     parser.add_argument("sample_name", help="sample_name name")
-    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell", "bead"], default="bulk", help="Processing mode: 'bulk', 'single_cell', or 'bead' DriverMap AIR.")
+    parser.add_argument("--force", action="store_true", help="Recalculate even when a template-estimation report already exists.")
 
     # Parse arguments
     args = parser.parse_args()
     
     # Run the processing function
-    quantify_templates(args.directory, args.sample_name, mode=args.mode)
+    quantify_templates(args.directory, args.sample_name, mode=args.mode, force=args.force)
 
