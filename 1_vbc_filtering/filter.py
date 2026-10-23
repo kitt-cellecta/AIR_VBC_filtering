@@ -21,9 +21,9 @@ MANIFEST_SUFFIX = ".vbc_analysis.manifest.json"
 def mode_details(mode):
     if mode == "single_cell":
         return ["cloneId", "tagValueMIWELLNAME"], 4
-    if mode == "bead":
-        return ["cloneId", "chain", "BeadBC"], 4
-    return ["cloneId"], 8
+    if mode == "bulk":
+        return ["cloneId"], 8
+    raise ValueError("mode must be 'bulk' or 'single_cell'")
 
 
 def manifest_path(directory, sample_name):
@@ -224,13 +224,13 @@ def find_kde_mimima_threshold(
     sample_name,
     default_low_thresh,
     min_valley_depth=0.10,
-    peak_selection="by_distance",
+    filter_selection="by_distance",
 ):
-    """Find a KDE threshold using the requested peak-selection strategy."""
+    """Find a KDE threshold using the requested filter-selection strategy."""
 
-    if peak_selection not in {"by_distance", "by_prominence"}:
+    if filter_selection not in {"by_distance", "by_prominence"}:
         raise ValueError(
-            "peak_selection must be 'by_distance' or 'by_prominence'"
+            "filter_selection must be 'by_distance' or 'by_prominence'"
         )
 
     # Function return format: (threshold cutoff, left peak max, right peak max, threshold cutoff kde value)
@@ -318,7 +318,7 @@ def find_kde_mimima_threshold(
         selected_min = between_minima[np.argmin(log_dens[between_minima])]
     
     elif len(maxima) > 2:
-        if peak_selection == "by_distance":
+        if filter_selection == "by_distance":
             # Original selection behavior: choose the position-based split
             # with the lowest within-side variance of all detected maxima.
             leftmost_max = np.min(maxima)
@@ -463,11 +463,11 @@ def reads_per_clonotype_filter(
     sample_name,
     default_low_thresh,
     mode="bulk",
-    peak_selection="by_distance",
+    filter_selection="by_distance",
 ):
     
     print("Running VBC filtering...")
-    is_manual = peak_selection == "manual"
+    is_manual = filter_selection == "manual"
     original_manifest = None
     manual_choices = None
     if is_manual:
@@ -476,13 +476,15 @@ def reads_per_clonotype_filter(
             raise ValueError(
                 f"Manual mode expects original mode {original_manifest.get('mode')!r}, not {mode!r}."
             )
-        selection_strategy = original_manifest.get("peak_selection")
+        selection_strategy = original_manifest.get(
+            "filter_selection", original_manifest.get("peak_selection")
+        )
         if selection_strategy not in {"by_distance", "by_prominence"}:
-            raise ValueError("Original manifest does not contain a supported peak-selection strategy.")
-        print(f"Manual mode uses original peak-selection strategy: {selection_strategy}")
+            raise ValueError("Original manifest does not contain a supported filter-selection strategy.")
+        print(f"Manual mode uses original filter-selection strategy: {selection_strategy}")
     else:
-        selection_strategy = peak_selection
-        print(f"Peak selection strategy: {selection_strategy}")
+        selection_strategy = filter_selection
+        print(f"Filter selection strategy: {selection_strategy}")
     
     df = input_file
     group_cols, n_barcodes = mode_details(mode)
@@ -520,7 +522,7 @@ def reads_per_clonotype_filter(
             barcode_count,
             sample_name,
             default_low_thresh,
-            peak_selection=selection_strategy,
+            filter_selection=selection_strategy,
         )
     
     #---------------------------------------------------------------------------------------------------#
@@ -770,13 +772,6 @@ def filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode="bulk"
         df_filtered = df_bcHop_filtered[
             df_bcHop_filtered[key_cols].apply(tuple, axis=1).isin(keys)
         ]
-    elif mode == "bead":
-        key_cols = ["targetSequences", "chain", "BeadBC"]
-        df_rpclon_filtered = df_rpclon_filtered.dropna(subset=key_cols)
-        keys = set(tuple(x) for x in df_rpclon_filtered[key_cols].values)
-        df_filtered = df_bcHop_filtered[
-            df_bcHop_filtered[key_cols].apply(tuple, axis=1).isin(keys)
-        ]
     else:
         # Bulk mode: filter by targetSequences only
         unique_target_sequences = set(df_rpclon_filtered["targetSequences"].dropna())
@@ -801,7 +796,7 @@ def write_analysis_manifest(directory, sample_name, mode, analysis):
     payload = {
         "status": "completed",
         "mode": mode,
-        "peak_selection": analysis["selection_strategy"],
+        "filter_selection": analysis["selection_strategy"],
         "manual": analysis["manual"],
         "final_thresholds": {str(key): value for key, value in analysis["final_thresholds"].items()},
         "automatic_thresholds": {str(key): value for key, value in analysis["automatic_thresholds"].items()},
@@ -813,7 +808,7 @@ def write_analysis_manifest(directory, sample_name, mode, analysis):
     print(f"VBC analysis manifest written: {manifest_path(directory, sample_name)}")
 
 
-def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_distance"):
+def main(input_file, directory, sample_name, mode="bulk", filter_selection="by_distance"):
     """
     Step 1: barcode_hopping_filter -- filter barcode hopping 
     Step 2: reads_per_clonotype_filter -- filter low read count clonotypes
@@ -846,13 +841,13 @@ def main(input_file, directory, sample_name, mode="bulk", peak_selection="by_dis
             sample_name,
             default_low_thresh,
             mode=mode,
-            peak_selection=peak_selection,
+            filter_selection=filter_selection,
         )
         df_passing_clonotypes = filter_passing_clonotypes(df_bcHop_filtered, df_rpclon_filtered, mode=mode)
     
         df_passing_clonotypes = df_passing_clonotypes.sort_values(by=['readCount'], ascending = False)
         df_passing_clonotypes.to_csv(output_path, sep="\t", index=False)
-        if peak_selection != "manual":
+        if filter_selection != "manual":
             write_manual_template(directory)
         write_analysis_manifest(directory, sample_name, mode, analysis)
     
@@ -867,14 +862,16 @@ if __name__ == "__main__":
     parser.add_argument("input_file", type=str, help="Path to input TSV file.")
     parser.add_argument("directory", type=str, help="Directory of MiXCR output files")
     parser.add_argument("sample_name", type=str, help="Prefix for output files.")
-    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell", "bead"], default="bulk", help="Processing mode: 'bulk', 'single_cell', or 'bead'.")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell'.")
     parser.add_argument(
-        "--peak-selection",
+        "--filter-selection", "--peak-selection",
+        dest="filter_selection",
         choices=["by_distance", "by_prominence", "manual"],
         default="by_distance",
         help=(
             "Strategy for KDE distributions with more than two peaks, or manual "
-            "selection from peak_manual_select.csv (default: by_distance)."
+            "selection from peak_manual_select.csv (default: by_distance). "
+            "--peak-selection is retained as a compatibility alias."
         ),
     )
     args = parser.parse_args()
@@ -883,5 +880,5 @@ if __name__ == "__main__":
         args.directory,
         args.sample_name,
         mode=args.mode,
-        peak_selection=args.peak_selection,
+        filter_selection=args.filter_selection,
     )

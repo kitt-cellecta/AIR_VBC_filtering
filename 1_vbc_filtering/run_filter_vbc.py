@@ -22,7 +22,7 @@ def manual_choices_are_all_keep(directory, mode):
     choices = {int(row["vbc_bin"]): row["filter_choice"].strip() for row in rows}
     if set(choices) != set(range(1, 9)):
         raise ValueError("Manual template must contain exactly VBC bins 1 through 8.")
-    active_bins = range(1, 5) if mode in {"single_cell", "bead"} else range(1, 9)
+    active_bins = range(1, 5) if mode == "single_cell" else range(1, 9)
     return all(choices[barcode_count] == "keep" for barcode_count in active_bins)
 
 
@@ -92,9 +92,10 @@ def main():
     parser = argparse.ArgumentParser(description='Process clones files and filter low abundance clones')
     parser.add_argument('dir', help='Input directory containing initial data files')
     parser.add_argument('sample', help='Sample name prefix for output files')
-    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell', 'bead'], default='bulk', help="Processing mode: 'bulk', 'single_cell', or 'bead' DriverMap AIR.")
+    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell'], default='bulk', help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
     parser.add_argument(
-        '--peak-selection',
+        '--filter-selection', '--peak-selection',
+        dest='filter_selection',
         choices=['by_distance', 'by_prominence', 'manual'],
         default='by_distance',
         help=(
@@ -106,15 +107,15 @@ def main():
     sample_name = args.sample
     directory = args.dir
     mode = args.mode
-    peak_selection = args.peak_selection
+    filter_selection = args.filter_selection
     if not directory.endswith(os.path.sep):
         directory += os.path.sep
     run_filter_dir = os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(directory):
         sys.exit(f"Error: Directory '{directory}' does not exist")
     try:
-        if peak_selection == "manual":
-            if mode in {"single_cell", "bead"}:
+        if filter_selection == "manual":
+            if mode == "single_cell":
                 print("Manual mode: VBC bins 5-8 are ignored in this 4-VBC mode.")
             if manual_choices_are_all_keep(directory, mode):
                 print("Manual mode: all active VBC bins are 'keep'; no filtering changes requested.")
@@ -122,38 +123,33 @@ def main():
             archive_original_analysis(directory, sample_name, mode)
         report_file_name = f"{directory}{sample_name}.vbcFiltering.report.txt"
         completed_manual_manifest = os.path.join(directory, f"{sample_name}{MANIFEST_SUFFIX}")
-        if peak_selection == "manual" and os.path.isfile(completed_manual_manifest):
+        if filter_selection == "manual" and os.path.isfile(completed_manual_manifest):
             with open(completed_manual_manifest) as handle:
                 completed_metadata = json.load(handle)
             if completed_metadata.get("status") == "completed" and completed_metadata.get("manual"):
                 print(f"Manual filtering has already completed for {sample_name}. See '{report_file_name}'...")
                 return
-        if peak_selection != "manual" and os.path.exists(report_file_name):
+        if filter_selection != "manual" and os.path.exists(report_file_name):
             print(f"Clones have already been filtered for {sample_name}. See '{report_file_name}'...")
             sys.exit(0)
         with open(report_file_name, 'w') as report_file:
             output_all = os.path.join(directory, f"{sample_name}.clones_ALL.tsv")
-            if mode == "bead":
-                filter_input = os.path.join(directory, f"{sample_name}.clones.beadBC.tsv")
-                if not os.path.exists(filter_input):
-                    sys.exit(f"Error: Bead clone table not found: {filter_input}")
-            else:
-                output_all_preexisting = os.path.exists(output_all)
-                py1_concatenate = os.path.join(run_filter_dir, "concatenate_clones_files.py")
-                run_subprocess(
+            output_all_preexisting = os.path.exists(output_all)
+            py1_concatenate = os.path.join(run_filter_dir, "concatenate_clones_files.py")
+            run_subprocess(
                 [sys.executable, py1_concatenate, directory],
-                    report_file
-                )
-                if not os.path.exists(output_all):
-                    sys.exit(f"Error: Failed to create {output_all}")
-                filter_input = output_all
+                report_file
+            )
+            if not os.path.exists(output_all):
+                sys.exit(f"Error: Failed to create {output_all}")
+            filter_input = output_all
             # QC Filtering steps with VBC
             output_filtered = os.path.join(directory, f"{sample_name}.clones_ALL.filtered.tsv")
             py2_filtering = os.path.join(run_filter_dir, "filter.py")
             filter_cmd = [sys.executable, py2_filtering, filter_input, directory, sample_name]
             if mode:
                 filter_cmd += ["--mode", mode]
-            filter_cmd += ["--peak-selection", peak_selection]
+            filter_cmd += ["--filter-selection", filter_selection]
             run_subprocess(
                 filter_cmd,
                 report_file
@@ -161,7 +157,7 @@ def main():
             if not os.path.exists(output_filtered):
                 sys.exit(f"Error: Failed to create {output_filtered}")
             print("Barcode hopping and mutated sequence filtering completed...")
-            if mode != "bead" and not output_all_preexisting:
+            if not output_all_preexisting:
                 os.remove(output_all)
     except subprocess.CalledProcessError as e:
         sys.exit(f"Pipeline failed at {e.cmd[1]} with error {e.returncode}")

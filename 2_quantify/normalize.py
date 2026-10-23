@@ -83,7 +83,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Quantify templates based on normFactor")
     parser.add_argument("directory", help="Directory containing the sample_name files")
     parser.add_argument("sample_name", help="sample_name name")
-    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell", "bead"], default="bulk", help="Processing mode: 'bulk', 'single_cell', or 'bead' DriverMap AIR.")
+    parser.add_argument("--mode", type=str, choices=["bulk", "single_cell"], default="bulk", help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
     parser.add_argument("--force", action="store_true", help="Recalculate even when a template-estimation report already exists.")
 
     # Parse arguments

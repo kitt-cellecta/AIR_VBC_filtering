@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description='Process clones files and filter low abundance clones')
     parser.add_argument('dir', help='Input directory containing initial data files')
     parser.add_argument('sample', help='Sample name prefix for output files')
-    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell', 'bead'], default='bulk', help="Processing mode: 'bulk', 'single_cell', or 'bead' DriverMap AIR.")
+    parser.add_argument('--mode', type=str, choices=['bulk', 'single_cell'], default='bulk', help="Processing mode: 'bulk' or 'single_cell' DriverMap AIR.")
     parser.add_argument('--force', action='store_true', help='Recalculate even when a template-estimation report already exists.')
     args = parser.parse_args()
     sample_name = args.sample

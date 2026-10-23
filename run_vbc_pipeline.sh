@@ -6,17 +6,15 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  bash run_vbc_pipeline.sh DIRECTORY SAMPLE_NAME [--mode MODE] [--peak-selection SELECTION]
+  bash run_vbc_pipeline.sh DIRECTORY SAMPLE_NAME [--mode MODE] [--filter-selection SELECTION]
 
 Arguments:
   DIRECTORY                 MiXCR sample directory containing the clone table(s).
   SAMPLE_NAME               MiXCR output prefix for the sample.
-  --mode MODE               bulk, single_cell, or bead (default: bulk).
-  --peak-selection SELECTION
+  --mode MODE               bulk or single_cell (default: bulk).
+  --filter-selection SELECTION
                             by_distance, by_prominence, or manual
                             (default: by_distance).
-
-Set PYTHON_BIN to use a specific Python interpreter; otherwise python3 is used.
 EOF
 }
 
@@ -29,7 +27,7 @@ directory=$1
 sample_name=$2
 shift 2
 mode=bulk
-peak_selection=by_distance
+filter_selection=by_distance
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -38,9 +36,9 @@ while [[ $# -gt 0 ]]; do
             mode=$2
             shift 2
             ;;
-        --peak-selection)
-            [[ $# -ge 2 ]] || { echo "Error: --peak-selection requires a value." >&2; exit 2; }
-            peak_selection=$2
+        --filter-selection|--peak-selection)
+            [[ $# -ge 2 ]] || { echo "Error: $1 requires a value." >&2; exit 2; }
+            filter_selection=$2
             shift 2
             ;;
         -h|--help)
@@ -55,8 +53,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case $mode in bulk|single_cell|bead) ;; *) echo "Error: invalid mode: $mode" >&2; exit 2 ;; esac
-case $peak_selection in by_distance|by_prominence|manual) ;; *) echo "Error: invalid peak selection: $peak_selection" >&2; exit 2 ;; esac
+case $mode in bulk|single_cell) ;; *) echo "Error: invalid mode: $mode" >&2; exit 2 ;; esac
+case $filter_selection in by_distance|by_prominence|manual) ;; *) echo "Error: invalid filter selection: $filter_selection" >&2; exit 2 ;; esac
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 python_bin=${PYTHON_BIN:-python3}
@@ -64,7 +62,7 @@ python_bin=${PYTHON_BIN:-python3}
 "$python_bin" "$script_dir/1_vbc_filtering/run_filter_vbc.py" \
     "$directory" "$sample_name" \
     --mode "$mode" \
-    --peak-selection "$peak_selection"
+    --filter-selection "$filter_selection"
 
 if [[ $directory == */ ]]; then
     sample_dir=$directory
